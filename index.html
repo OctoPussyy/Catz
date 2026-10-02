@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Catz Fight</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  :root { --ink: #f4eaff; --pink: #ff2bd6; --bg: #040008; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; -webkit-user-select: none; user-select: none; }
+  body { background: #0d0b10; }
+
+  #cab { position: absolute; left: 0; top: 0; width: 1086px; height: 1448px; transform-origin: 0 0; will-change: transform; }
+  #cab.anim { transition: transform .6s cubic-bezier(.2, .8, .2, 1); }
+  #cabimg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; -webkit-user-drag: none;
+    -webkit-mask-image: linear-gradient(to bottom, #000 92%, transparent 100%), linear-gradient(to right, transparent 0, #000 4%, #000 96%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 92%, transparent 100%), linear-gradient(to right, transparent 0, #000 4%, #000 96%, transparent 100%);
+    -webkit-mask-composite: source-in; mask-composite: intersect; }
+
+  /* the CRT glass: sits exactly over the machine's screen */
+  /* the canvas is warped onto the machine's keystoned glass with a perspective matrix (set in cabinet.js) */
+  #scr { position: absolute; left: 0; top: 0; width: 960px; height: 988px; border-radius: 64px;
+    overflow: hidden; background: #000; cursor: pointer; transform-origin: 0 0; }
+  #screen { width: 100%; height: 100%; display: block; image-rendering: auto; }
+  #crt, #glare { position: absolute; inset: 0; pointer-events: none; }
+  #crt { background:
+      repeating-linear-gradient(to bottom, rgba(0,0,0,.22) 0 2px, rgba(0,0,0,0) 2px 5px),
+      radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.6) 100%); box-shadow: inset 0 0 40px 10px rgba(0,0,0,.65); }
+  #glare { background: linear-gradient(115deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,0) 28%, rgba(255,255,255,0) 70%, rgba(255,255,255,.05) 100%); }
+
+  /* clickable controls on the cabinet */
+  .hot { position: absolute; border-radius: 50%; cursor: pointer; touch-action: none; -webkit-tap-highlight-color: transparent; }
+  .hot.btn.on { background: radial-gradient(circle, rgba(255,255,255,.55), rgba(255,255,255,.12) 70%); box-shadow: 0 0 22px 8px rgba(255,255,255,.45); }
+  .hot.coin { border-radius: 8px; }
+  .hot.coin.on { background: rgba(255,60,60,.35); box-shadow: 0 0 18px 6px rgba(255,80,80,.7); }
+  .stick { box-shadow: inset 0 0 0 2px rgba(255,255,255,0); }
+  .stick .dot { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%;
+    background: rgba(255,255,255,.0); transition: transform .06s, background .06s, box-shadow .06s; }
+  .stick.on .dot { background: rgba(255,255,255,.75); box-shadow: 0 0 14px 5px rgba(255,255,255,.5); }
+
+  /* toolbar + help (outside the cabinet) */
+  #bar { position: fixed; top: 10px; right: 10px; display: flex; gap: 6px; z-index: 5; }
+  #bar button, #help button.x { font: 600 12px/1 ui-monospace, Menlo, Consolas, monospace; color: var(--ink); background: rgba(20,4,34,.78);
+    border: 1px solid rgba(255,43,214,.55); border-radius: 8px; padding: 8px 10px; cursor: pointer; letter-spacing: .04em; }
+  #bar button:hover { background: rgba(60,10,80,.9); }
+  #help { position: fixed; left: 14px; top: 14px; width: 292px; padding: 14px 16px 12px; z-index: 4; font-size: 12px; line-height: 1.55;
+    background: rgba(14,2,26,.82); border: 1px solid rgba(255,43,214,.45); border-radius: 12px; backdrop-filter: blur(6px); }
+  #help h2 { margin: 0 0 6px; font: 400 11px "Press Start 2P", ui-monospace, monospace; color: #ffd45a; letter-spacing: .04em; }
+  #help b { color: #7fe9ff; font-weight: 600; }
+  #help .p1 { color: #ffb36b; font-weight: 700; } #help .p2 { color: #7fe9ff; font-weight: 700; }
+  #help p { margin: 3px 0; } #help .tip { margin-top: 8px; color: #c9b6ff; }
+  #help button.x { position: absolute; right: 8px; top: 8px; padding: 4px 7px; }
+  #help.hide { display: none; }
+  #help { transition: opacity .4s; } #help.away { opacity: 0; pointer-events: none; }
+  @media (max-width: 1000px) { #help { display: none; } }
+  @media (max-width: 560px) { #bar button span { display: none; } }
+</style>
+</head>
+<body>
+  <div id="cab">
+    <img id="cabimg" src="assets/cabinet.png" alt="Catz Fight arcade cabinet" draggable="false">
+    <div id="scr">
+      <canvas id="screen" width="960" height="988"></canvas>
+      <div id="crt"></div><div id="glare"></div>
+    </div>
+  </div>
+
+  <div id="bar">
+    <button id="bZoom" title="Zoom (Z)">&#9906; <span>VIEW</span></button>
+    <button id="bMute" title="Mute (M)">&#9835; <span>SOUND</span></button>
+    <button id="bFull" title="Fullscreen (F)">&#9974; <span>FULL</span></button>
+    <button id="bHelp" title="Controls (H)">? <span>KEYS</span></button>
+  </div>
+
+  <div id="help">
+    <button class="x" id="hx" title="Close">&#10005;</button>
+    <h2>CONTROLS</h2>
+    <p><span class="p1">P1</span> <b>W A S D</b> move / jump / crouch<br>
+       <b>J</b> punch &nbsp;<b>K</b> heavy punch &nbsp;<b>L</b> block<br>
+       <b>U</b> kick &nbsp;<b>I</b> heavy kick &nbsp;<b>O</b> special</p>
+    <p><span class="p2">P2</span> <b>&#8592; &#8593; &#8595; &#8594;</b> move<br>
+       <b>Numpad 4 5 6 / 1 2 3</b> (same layout)<br>
+       or <b>; ' \</b> / <b>, . /</b> on a laptop</p>
+    <p class="tip"><b>Enter</b> / tap screen = 1 player &middot; <b>2</b> = 2 players<br>
+       Or click the joysticks, buttons and coin slots on the machine itself.</p>
+    <p class="tip">&#8595; + kick = low sweep &middot; &#8595; + L blocks lows<br>
+       Chain: J &rarr; U &rarr; K &rarr; I &rarr; O (when SP bar is full)<br>
+       <b>Z</b> zoom &middot; <b>M</b> mute &middot; <b>P</b> pause &middot; <b>F2</b> hitboxes</p>
+  </div>
+
+  <script src="js/parts.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/input.js"></script>
+  <script src="js/rig.js"></script>
+  <script src="js/poses.js"></script>
+  <script src="js/stage.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/cabinet.js"></script>
+</body>
+</html>
