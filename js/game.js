@@ -106,7 +106,7 @@
     if (!m.air) f.vx = (m.adv && f.t < m.S + m.A) ? f.face * m.adv : 0;
     if (m.sfx && !m.special && f.t === Math.max(1, m.S - 3)) Sound.play(m.sfx);
     if (m.special && f.t === m.S) { spawnProj(f); f.meter = 0; }
-    if (f.connected && f.t > m.S && f.t < m.total - 2) {
+    if (f.connected && f.t >= m.S + m.A && f.t < m.total - 2) {
       const k = chooseAttack(f, c);
       if (k && canCancel(m, MV[k])) { startAttack(f, k); return; }
     }
@@ -122,7 +122,7 @@
   function doDown(f) {
     if (f.y === 0 && !f.landed) { f.landed = true; f.vx *= 0.3; Sound.play('knockdown'); G.shake = Math.max(G.shake, 7); fx(f.x, GROUND - 20, 'dust', 60); }
     if (f.y === 0) f.vx *= 0.8;
-    if (!f.ko && f.t >= FALL + LIE + GETUP) { f.state = 'idle'; f.t = 0; f.invuln = 14; f.vx = 0; f.crouch = false; }
+    if (!f.ko && f.t >= FALL + LIE + GETUP) { f.state = 'idle'; f.t = 0; f.invuln = 34; f.vx = 0; f.crouch = false; }
   }
 
   function updateFighter(f, o, c, pr) {
@@ -172,7 +172,12 @@
     const inCombo = d.state === 'hit' || (d.state === 'down' && d.t < 6);
     a.combo = inCombo ? a.combo + 1 : 1;
     const counter = d.state === 'attack';
-    const dmg = (m.dmg || 0) * Math.max(0.35, 1 - 0.13 * (a.combo - 1)) * (counter ? 1.25 : 1);
+    let dmg = (m.dmg || 0) * Math.max(0.35, 1 - 0.13 * (a.combo - 1)) * (counter ? 1.25 : 1);
+    const F = G.fight;
+    if (G.mode === 1 && F && !F.demo) {           // vs the CPU: whoever is far ahead deals a bit less, the one behind a bit more
+      const lead = (F.f[0].hp - F.f[1].hp) / 100 + 0.15 * (F.f[0].wins - F.f[1].wins);   // >0 = player ahead
+      dmg *= d === F.f[1] ? clamp(1 - 0.55 * lead, 0.55, 1.2) : clamp(1 + 0.45 * lead, 0.85, 1.35);
+    }
     d.hp = Math.max(0, d.hp - dmg);
     d.flash = 6;
     const kd = m.kd || d.y > 0 || d.hp <= 0 || a.combo >= 4;      // combo limit: the 4th hit knocks down
