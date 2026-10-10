@@ -36,9 +36,9 @@ const Poses = (() => {
   // box: x0..x1 forward of the attacker's centre, y0..y1 above the attacker's feet (world px).
   // hs/bs: hit-/block-stun frames. kb: pushback px/frame on hit. kd: knockdown. adv: forward drift px/frame.
   const Moves = {
-    LP: { name: 'jab', S: 5, A: 3, R: 9, dmg: 5, hs: 15, bs: 9, kb: 3, height: 'high', box: { x0: 40, x1: 220, y0: 255, y1: 385 },
+    LP: { name: 'jab', S: 5, A: 3, R: 9, dmg: 5, hs: 13, bs: 9, kb: 3, height: 'high', box: { x0: 40, x1: 220, y0: 255, y1: 385 },
       sfx: 'whoosh', kf: [[0, {}], [2, { hrx: 70, hry: 135, tr: 2 }], [5, { hrx: 525, hry: 15, tr: 15, px: 22 }], [8, { hrx: 525, hry: 15, tr: 15, px: 22 }], [17, {}]] },
-    HP: { name: 'cross', S: 10, A: 4, R: 16, dmg: 11, hs: 22, bs: 13, kb: 6, height: 'mid', box: { x0: 40, x1: 245, y0: 190, y1: 350 }, adv: 1.6,
+    HP: { name: 'cross', S: 10, A: 4, R: 16, dmg: 11, hs: 20, bs: 13, kb: 6, height: 'mid', box: { x0: 40, x1: 245, y0: 190, y1: 350 }, adv: 1.6,
       sfx: 'whoosh', kf: [[0, {}], [6, { tr: -16, px: -25, hlx: 90, hly: 190, hrx: 150, hry: 110 }],
         [10, { tr: 26, px: 48, hlx: 545, hly: 10, hrx: 150, hry: 110, flx: -170, frx: 205 }], [14, { tr: 26, px: 48, hlx: 545, hly: 10, hrx: 150, hry: 110, flx: -170, frx: 205 }], [30, {}]] },
     LK: { name: 'front kick', S: 8, A: 4, R: 14, dmg: 7, hs: 17, bs: 11, kb: 5, height: 'mid', box: { x0: 50, x1: 250, y0: 110, y1: 250 },
@@ -51,7 +51,7 @@ const Poses = (() => {
       sfx: 'special', kf: [[0, {}], [10, { hrx: -20, hry: 150, hlx: 120, hly: 150, tr: -18, px: -30 }],
         [18, { hrx: 490, hry: 30, hlx: 440, hly: 60, tr: 20, px: 35 }], [28, { hrx: 490, hry: 30, hlx: 440, hly: 60, tr: 20, px: 35 }], [41, {}]] },
     // crouching
-    cLP: { name: 'low jab', S: 6, A: 3, R: 10, dmg: 5, hs: 15, bs: 9, kb: 3, height: 'mid', crouch: true, box: { x0: 40, x1: 225, y0: 80, y1: 190 },
+    cLP: { name: 'low jab', S: 6, A: 3, R: 10, dmg: 5, hs: 13, bs: 9, kb: 3, height: 'mid', crouch: true, box: { x0: 40, x1: 225, y0: 80, y1: 190 },
       sfx: 'whoosh', kf: [[0, CROUCH], [3, Object.assign({}, CROUCH, { hrx: 60, hry: 170 })], [6, Object.assign({}, CROUCH, { hrx: 520, hry: 125, tr: 20 })],
         [9, Object.assign({}, CROUCH, { hrx: 520, hry: 125, tr: 20 })], [19, CROUCH]], base: CROUCH },
     cLK: { name: 'sweep', S: 10, A: 4, R: 20, dmg: 8, hs: 18, bs: 13, kb: 3, kd: true, height: 'low', crouch: true, box: { x0: 40, x1: 270, y0: 0, y1: 75 },

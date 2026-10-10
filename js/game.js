@@ -175,7 +175,7 @@
     const dmg = (m.dmg || 0) * Math.max(0.35, 1 - 0.13 * (a.combo - 1)) * (counter ? 1.25 : 1);
     d.hp = Math.max(0, d.hp - dmg);
     d.flash = 6;
-    const kd = m.kd || d.y > 0 || d.hp <= 0;
+    const kd = m.kd || d.y > 0 || d.hp <= 0 || a.combo >= 4;      // combo limit: the 4th hit knocks down
     d.move = null; d.hit = false; d.t = 0;
     d.hitPose = (m.height === 'low' || m.crouch) ? 'hitLow' : 'hitHigh';
     if (kd) {
@@ -183,7 +183,7 @@
       d.vy = d.y > 0 ? 6 : 9; d.vx = -d.face * ((m.kb || 5) + 2.5);
       d.crouch = false; d.invuln = 0;
     } else {
-      d.state = 'hit'; d.stun = (m.hs || 15) + (counter ? 4 : 0);
+      d.state = 'hit'; d.stun = Math.max(8, (m.hs || 15) - 2 * (a.combo - 1)) + (counter ? 4 : 0);   // stun decays within a combo
       d.vx = -d.face * (m.kb || 3);
       if ((d.x <= WALL_L + 2 && d.vx < 0) || (d.x >= WALL_R - 2 && d.vx > 0)) a.vx = -a.face * (m.kb || 3) * 0.9;
     }
@@ -277,18 +277,34 @@
   // ============================================================================================================
   //  AI
   // ============================================================================================================
-  function newAI(skill) { return { skill, script: [], blockT: 0, blockLow: false, sawAtk: false, projT: 0, cool: 20 }; }
+  function newAI(skill) { return { skill, script: [], blockT: 0, blockLow: false, sawAtk: false, projT: 0, cool: 20, hp: 100, pressure: 0, pressT: 0, prevState: 'intro' }; }
 
   function aiControl(f, o) {
     const A = f.ai, c = blankCtl();
+    // Keep it fair: ease off when the player is well behind (health or rounds), push harder when they are well ahead.
+    const adv = (o.hp - f.hp) / 100 + 0.2 * (o.wins - f.wins);
+    const sk = clamp(A.skill + 0.5 * adv, 0.08, 0.95);
     const dx = o.x - f.x, dist = Math.abs(dx) / K, toward = dx > 0 ? 'r' : 'l', away = dx > 0 ? 'l' : 'r';
+    // pressure: how many times we've been hit lately. Mashing makes the CPU defend harder.
+    if (f.hp < A.hp - 0.5) { A.pressure = Math.min(5, A.pressure + 1); A.pressT = 200; }
+    A.hp = f.hp;
+    if (A.pressT > 0 && --A.pressT === 0) A.pressure = 0;
+    const justRecovered = (A.prevState === 'hit' || A.prevState === 'blockstun' || A.prevState === 'down') && f.state === 'idle';
+    A.prevState = f.state;
     if (f.state !== 'idle' && f.state !== 'attack') { A.script = []; A.blockT = 0; return c; }
+    if (justRecovered && adv > -0.3) {            // wake-up: don't just stand there, block or hit back immediately
+      A.cool = 1;
+      const r0 = Math.random();
+      if (r0 < 0.2 + 0.05 * A.pressure) A.script = [{ k: ['blk'], n: 12 + (Math.random() * 12 | 0) }];
+      else if (r0 < 0.6 && dist < 285) A.script = [{ k: ['lp'], n: 2 }];
+      else if (r0 < 0.75) A.script = [{ k: ['A'], n: 8 }];
+    }
     // react to a fresh attack
     if (o.state === 'attack' && o.move && dist < 360 && !o.move.special) {
       if (!A.sawAtk && o.t <= o.move.S) {
         A.sawAtk = true;
-        if (Math.random() < 0.15 + A.skill * 0.7) {
-          A.blockT = (o.move.total - o.t) + 3;
+        if (Math.random() < Math.min(0.92, 0.4 + sk * 0.5 + 0.06 * A.pressure)) {
+          A.blockT = Math.max(2, (o.move.S + o.move.A - o.t) + 4);      // block through the active frames only, so recovery can be punished
           A.blockLow = o.move.height === 'low' || (!!o.move.crouch && o.move.height !== 'high');
           A.script = [];
         }
@@ -298,11 +314,17 @@
     for (const p of G.projs) {
       if (p.owner !== f.idx && Math.abs(p.x - f.x) < 260 * K && Math.sign(p.vx) === Math.sign(f.x - p.x) && A.projT <= 0) {
         A.projT = 40;
-        if (Math.random() < 0.2 + A.skill * 0.7) { A.blockT = 30; A.blockLow = false; A.script = []; }
+        if (Math.random() < 0.2 + sk * 0.7) { A.blockT = 30; A.blockLow = false; A.script = []; }
       }
     }
     if (A.projT > 0) A.projT--;
     if (A.blockT > 0) { A.blockT--; if (f.y === 0) { c.blk = true; c.d = A.blockLow; } return c; }
+    // punish: the opponent is recovering from an attack and in reach, so hit them while they can't act
+    if (f.state === 'idle' && f.y === 0 && !A.script.length && o.state === 'attack' && o.move && !o.move.special && !o.move.air &&
+        o.t >= o.move.S + o.move.A && o.t < o.move.total - 3 && dist < 330 && Math.random() < 0.08 + 0.2 * sk) {
+      A.script = dist < 262 ? [{ k: ['lp'], n: 2 }, { k: [], n: 4 }, { k: ['hp'], n: 2 }] : [{ k: ['lk'], n: 2 }];
+      A.cool = 4;
+    }
     // run the current script (also while attacking, so strings can chain)
     if (A.script.length) {
       const s = A.script[0];
@@ -312,11 +334,15 @@
     }
     if (f.state === 'attack') return c;
     if (--A.cool > 0) return c;
-    A.cool = Math.round(rnd(10, 36) * (1.25 - A.skill * 0.7));
+    A.cool = Math.round(rnd(8, 30) * (1.2 - sk * 0.7) * (adv < -0.3 ? 1.6 : 1));
+    if (adv < -0.15 && Math.random() < Math.min(0.75, -adv * 1.6)) {      // well ahead: back off and give them room
+      A.script = [{ k: Math.random() < 0.5 ? ['A'] : [], n: 18 + (Math.random() * 22 | 0) }];
+      return c;
+    }
     const r = Math.random(), S = (k, n) => ({ k, n });
     if (dist > 400) {
       if (f.meter >= 100 && r < 0.45) A.script = [S(['sp'], 2)];
-      else if (r < 0.14 + A.skill * 0.08) A.script = [S(['u', 'T'], 3), S(['T'], 13), S(['lk', 'T'], 3)];
+      else if (r < 0.14 + sk * 0.08) A.script = [S(['u', 'T'], 3), S(['T'], 13), S(['lk', 'T'], 3)];
       else A.script = [S(['T'], rnd(14, 36) | 0)];
     } else if (dist > 300) {
       if (r < 0.34) A.script = [S(['lk'], 2)];
@@ -484,7 +510,7 @@
   }
   function startFightFromVS() {
     const [c1, c2] = G.vs;
-    const skill = clamp(0.25 + 0.14 * (G.ladder - 1), 0.2, 0.95);
+    const skill = clamp(0.35 + 0.1 * (G.ladder - 1), 0.25, 0.9);
     newMatch(c1, c2, { ai2: G.mode === 1, skill2: skill });
     G.screen = 'fight'; Sound.setMode('fight');
   }
