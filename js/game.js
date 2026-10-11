@@ -25,8 +25,17 @@
   const rnd = (a, b) => a + Math.random() * (b - a);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
+  // CPU difficulty. skill: base AI sharpness; react/punish/cool: how often it blocks, punishes, how fast it decides;
+  // dealt/taken: damage multipliers for the human player; mercy: how strongly the comeback balancing applies; mult: score multiplier
+  const DIFFS = [
+    { name: 'EASY',   skill: 0.12, react: 0.55, punish: 0.35, cool: 1.6,  dealt: 1.25, taken: 0.7,  mercy: 1.3,  mult: 0.5,  col: '#7dff9a' },
+    { name: 'NORMAL', skill: 0.35, react: 1,    punish: 1,    cool: 1,    dealt: 1,    taken: 1,    mercy: 1,    mult: 1,    col: '#ffe14a' },
+    { name: 'HARD',   skill: 0.6,  react: 1.15, punish: 1.35, cool: 0.75, dealt: 0.9,  taken: 1.15, mercy: 0.35, mult: 1.75, col: '#ff5a5a' },
+  ];
+  const diffNow = () => DIFFS[G.diff] || DIFFS[1];
+
   const G = {
-    _screen: 'boot', frame: 0, mode: 1, ladder: 1, fight: null, projs: [], fx: [], shake: 0, hitstop: 0,
+    _screen: 'boot', diff: 1, frame: 0, mode: 1, ladder: 1, fight: null, projs: [], fx: [], shake: 0, hitstop: 0,
     banner: null, sel: [{ i: 0, locked: false }, { i: 3, locked: false }], selT: 0, stageIdx: 0, vsT: 0, resT: 0,
     paused: false, debug: false, slow: false, acc: 0, combo: [null, null], menuPrev: [blankCtl(), blankCtl()],
   };
@@ -50,7 +59,7 @@
       connected: false, stun: 0, buf: {}, crouch: false, block: false, combo: 0, invuln: 0, airUsed: false, ko: false,
       walkPh: 0, walkDir: 0, hitPose: 'hitHigh', flash: 0, landed: true, pose: Poses.make(), prev: blankCtl(), lastHit: 0,
     });
-    if (f.ai) f.ai = newAI(f.ai.skill);
+    if (f.ai) f.ai = newAI(f.ai.skill, f.ai.d);
   }
 
   function isCrouched(f) {
@@ -175,8 +184,9 @@
     let dmg = (m.dmg || 0) * Math.max(0.35, 1 - 0.13 * (a.combo - 1)) * (counter ? 1.25 : 1);
     const F = G.fight;
     if (G.mode === 1 && F && !F.demo) {           // vs the CPU: whoever is far ahead deals a bit less, the one behind a bit more
-      const lead = (F.f[0].hp - F.f[1].hp) / 100 + 0.15 * (F.f[0].wins - F.f[1].wins);   // >0 = player ahead
-      dmg *= d === F.f[1] ? clamp(1 - 0.55 * lead, 0.55, 1.2) : clamp(1 + 0.45 * lead, 0.85, 1.35);
+      const DF = diffNow();
+      const lead = ((F.f[0].hp - F.f[1].hp) / 100 + 0.15 * (F.f[0].wins - F.f[1].wins)) * DF.mercy;   // >0 = player ahead
+      dmg *= d === F.f[1] ? clamp(1 - 0.55 * lead, 0.55, 1.2) * DF.dealt : clamp(1 + 0.45 * lead, 0.85, 1.35) * DF.taken;
     }
     d.hp = Math.max(0, d.hp - dmg);
     d.flash = 6;
@@ -282,13 +292,13 @@
   // ============================================================================================================
   //  AI
   // ============================================================================================================
-  function newAI(skill) { return { skill, script: [], blockT: 0, blockLow: false, sawAtk: false, projT: 0, cool: 20, hp: 100, pressure: 0, pressT: 0, prevState: 'intro' }; }
+  function newAI(skill, d) { return { skill, d: d || DIFFS[1], script: [], blockT: 0, blockLow: false, sawAtk: false, projT: 0, cool: 20, hp: 100, pressure: 0, pressT: 0, prevState: 'intro' }; }
 
   function aiControl(f, o) {
     const A = f.ai, c = blankCtl();
     // Keep it fair: ease off when the player is well behind (health or rounds), push harder when they are well ahead.
     const adv = (o.hp - f.hp) / 100 + 0.2 * (o.wins - f.wins);
-    const sk = clamp(A.skill + 0.5 * adv, 0.08, 0.95);
+    const sk = clamp(A.skill + 0.5 * adv * A.d.mercy, 0.05, 0.95);
     const dx = o.x - f.x, dist = Math.abs(dx) / K, toward = dx > 0 ? 'r' : 'l', away = dx > 0 ? 'l' : 'r';
     // pressure: how many times we've been hit lately. Mashing makes the CPU defend harder.
     if (f.hp < A.hp - 0.5) { A.pressure = Math.min(5, A.pressure + 1); A.pressT = 200; }
@@ -297,7 +307,7 @@
     const justRecovered = (A.prevState === 'hit' || A.prevState === 'blockstun' || A.prevState === 'down') && f.state === 'idle';
     A.prevState = f.state;
     if (f.state !== 'idle' && f.state !== 'attack') { A.script = []; A.blockT = 0; return c; }
-    if (justRecovered && adv > -0.3) {            // wake-up: don't just stand there, block or hit back immediately
+    if (justRecovered && adv > -0.3 && Math.random() < 0.25 + 0.75 * A.d.punish) {            // wake-up: don't just stand there, block or hit back immediately
       A.cool = 1;
       const r0 = Math.random();
       if (r0 < 0.2 + 0.05 * A.pressure) A.script = [{ k: ['blk'], n: 12 + (Math.random() * 12 | 0) }];
@@ -308,7 +318,7 @@
     if (o.state === 'attack' && o.move && dist < 360 && !o.move.special) {
       if (!A.sawAtk && o.t <= o.move.S) {
         A.sawAtk = true;
-        if (Math.random() < Math.min(0.92, 0.4 + sk * 0.5 + 0.06 * A.pressure)) {
+        if (Math.random() < Math.min(0.92, (0.4 + sk * 0.5 + 0.06 * A.pressure) * A.d.react)) {
           A.blockT = Math.max(2, (o.move.S + o.move.A - o.t) + 4);      // block through the active frames only, so recovery can be punished
           A.blockLow = o.move.height === 'low' || (!!o.move.crouch && o.move.height !== 'high');
           A.script = [];
@@ -326,7 +336,7 @@
     if (A.blockT > 0) { A.blockT--; if (f.y === 0) { c.blk = true; c.d = A.blockLow; } return c; }
     // punish: the opponent is recovering from an attack and in reach, so hit them while they can't act
     if (f.state === 'idle' && f.y === 0 && !A.script.length && o.state === 'attack' && o.move && !o.move.special && !o.move.air &&
-        o.t >= o.move.S + o.move.A && o.t < o.move.total - 3 && dist < 330 && Math.random() < 0.08 + 0.2 * sk) {
+        o.t >= o.move.S + o.move.A && o.t < o.move.total - 3 && dist < 330 && Math.random() < (0.08 + 0.2 * sk) * A.d.punish) {
       A.script = dist < 262 ? [{ k: ['lp'], n: 2 }, { k: [], n: 4 }, { k: ['hp'], n: 2 }] : [{ k: ['lk'], n: 2 }];
       A.cool = 4;
     }
@@ -339,7 +349,7 @@
     }
     if (f.state === 'attack') return c;
     if (--A.cool > 0) return c;
-    A.cool = Math.round(rnd(8, 30) * (1.2 - sk * 0.7) * (adv < -0.3 ? 1.6 : 1));
+    A.cool = Math.round(rnd(8, 30) * (1.2 - sk * 0.7) * (adv < -0.3 ? 1.6 : 1) * A.d.cool);
     if (adv < -0.15 && Math.random() < Math.min(0.75, -adv * 1.6)) {      // well ahead: back off and give them room
       A.script = [{ k: Math.random() < 0.5 ? ['A'] : [], n: 18 + (Math.random() * 22 | 0) }];
       return c;
@@ -404,8 +414,8 @@
     opts = opts || {};
     let h1 = ROSTER[c1].hue, h2 = ROSTER[c2].hue;
     if (c1 === c2) h2 = (h2 + 180) % 360;
-    const a = newFighter(0, c1, h1, opts.ai1 ? { skill: opts.skill1 || 0.5 } : null);
-    const b = newFighter(1, c2, h2, opts.ai2 ? { skill: opts.skill2 || 0.5 } : null);
+    const a = newFighter(0, c1, h1, opts.ai1 ? { skill: opts.skill1 || 0.5, d: DIFFS[1] } : null);
+    const b = newFighter(1, c2, h2, opts.ai2 ? { skill: opts.skill2 || 0.5, d: opts.demo ? DIFFS[1] : diffNow() } : null);
     G.fight = { f: [a, b], round: 0, phase: 'intro', t: 0, timer: 3600, demo: !!opts.demo, over: false, winner: -1, stage: G.stageIdx };
     G.projs = []; G.fx = []; G.combo = [null, null];
     startRound(G.fight);
@@ -418,6 +428,10 @@
   }
   function endRound(F, winner, why) {
     F.phase = 'ko'; F.t = 0; F.winner = winner; F.why = why;
+    if (!F.demo && F.log) {
+      F.log.push({ round: F.round, winner, why, hp: [Math.round(F.f[0].hp), Math.round(F.f[1].hp)], secLeft: Math.max(0, Math.ceil(F.timer / 60)) });
+      emit('catz:round_end', { matchId: F.id, round: F.round, winner, why, hp: F.log[F.log.length - 1].hp, secLeft: F.log[F.log.length - 1].secLeft });
+    }
     if (winner >= 0) F.f[winner].wins++;
     if (why === 'ko') { G.slow = true; Sound.play('ko'); G.shake = 14; }
   }
@@ -490,15 +504,58 @@
   function finishMatch(F) {
     if (F.demo) { newMatch(randCh(), randCh(), { ai1: 1, ai2: 1, demo: 1, skill1: 0.6, skill2: 0.6 }); return; }
     F.over = true;
+    reportMatchEnd(F);
     G.screen = 'result'; G.resT = 0;
     Sound.setMode('menu');
   }
   const randCh = () => (Math.random() * ROSTER.length) | 0;
 
   // ============================================================================================================
+  //  host integration: the game announces what happens so the page that embeds it can award rep / track players.
+  //  Messages are plain objects { source:'catz-fight', type, ts, token?, ... } sent to the parent window (postMessage)
+  //  and also fired as a DOM 'catz-event' for same-page use. Treat them as UNTRUSTED on the server (see docs/rep-integration.md).
+  // ============================================================================================================
+  const Host = { token: '', origin: '*' };
+  function emit(type, data) {
+    const msg = Object.assign({ source: 'catz-fight', v: 1, type, ts: Date.now() }, data || {});
+    if (Host.token) msg.token = Host.token;
+    try { if (window.parent && window.parent !== window) window.parent.postMessage(msg, Host.origin); } catch (e) { /* ignore */ }
+    try { document.dispatchEvent(new CustomEvent('catz-event', { detail: msg })); } catch (e) { /* ignore */ }
+  }
+  addEventListener('message', e => {
+    const d = e.data;
+    if (e.source !== window.parent || !d || d.type !== 'catz:init') return;
+    Host.token = String(d.token || '').slice(0, 256);
+    Host.origin = e.origin && e.origin !== 'null' ? e.origin : '*';        // from now on only talk to the embedding site
+    emit('catz:ready', { difficulties: DIFFS.map(x => x.name), difficulty: diffNow().name });
+  });
+  function matchScore(F) {
+    if (G.mode !== 1 || F.f[0].wins < 2) return 0;
+    const hp = F.log.reduce((n, r) => n + (r.winner === 0 ? r.hp[0] : 0), 0), time = F.log.reduce((n, r) => n + (r.winner === 0 ? r.secLeft : 0), 0);
+    const perfect = F.f[1].wins === 0 ? 300 : 0;
+    return Math.round((600 + hp * 5 + time * 3 + perfect) * DIFFS[F.diffIdx].mult + 150 * (G.ladder - 1));
+  }
+  function reportMatchEnd(F) {
+    if (F.demo || F.reported) return;
+    F.reported = true;
+    const dur = Date.now() - F.t0, w = F.f[0].wins >= 2 ? 0 : 1;
+    emit('catz:match_end', {
+      matchId: F.id, mode: G.mode, difficulty: DIFFS[F.diffIdx].name, ladder: G.ladder, p1: F.f[0].name, p2: F.f[1].name,
+      result: G.mode === 1 ? (w === 0 ? 'win' : 'loss') : 'p' + (w + 1) + '_win', rounds: F.log, roundsWon: [F.f[0].wins, F.f[1].wins],
+      durationMs: dur, score: matchScore(F), eligible: G.mode === 1 && dur >= 20000,
+    });
+  }
+  function abandonIfPlaying() {
+    const F = G.fight;
+    if (F && !F.demo && !F.over && F.id && !F.reported) { F.reported = true; emit('catz:match_abandon', { matchId: F.id, mode: G.mode, difficulty: DIFFS[F.diffIdx].name, durationMs: Date.now() - F.t0 }); }
+  }
+  addEventListener('pagehide', abandonIfPlaying);
+
+  // ============================================================================================================
   //  screens
   // ============================================================================================================
   function startAttract() {
+    abandonIfPlaying();
     G.screen = 'attract'; G.stageIdx = (Math.random() * 3) | 0; Sound.setMode('menu');
     newMatch(randCh(), randCh(), { ai1: 1, ai2: 1, demo: 1, skill1: 0.55, skill2: 0.55 });
   }
@@ -515,8 +572,11 @@
   }
   function startFightFromVS() {
     const [c1, c2] = G.vs;
-    const skill = clamp(0.35 + 0.1 * (G.ladder - 1), 0.25, 0.9);
+    const DF = diffNow(), skill = clamp(DF.skill + 0.08 * (G.ladder - 1), 0.05, 0.95);
     newMatch(c1, c2, { ai2: G.mode === 1, skill2: skill });
+    const F = G.fight;
+    F.id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36); F.t0 = Date.now(); F.log = []; F.diffIdx = G.diff;
+    emit('catz:match_start', { matchId: F.id, mode: G.mode, difficulty: DF.name, ladder: G.ladder, p1: ROSTER[c1].name, p2: ROSTER[c2].name });
     G.screen = 'fight'; Sound.setMode('fight');
   }
 
@@ -543,6 +603,10 @@
         continue;
       }
       if (s.locked) { if (e.blk) { s.locked = false; Sound.play('blip'); } continue; }
+      if (G.mode === 1 && i === 0 && (e.u || e.d)) {          // up / down changes the CPU level
+        G.diff = clamp(G.diff + (e.u ? 1 : -1), 0, DIFFS.length - 1); Sound.play('blip');
+        try { localStorage.setItem('catz-diff', String(G.diff)); } catch (err) { /* ignore */ }
+      }
       if (e.l) { s.i = (s.i + ROSTER.length - 1) % ROSTER.length; Sound.play('blip'); }
       if (e.r) { s.i = (s.i + 1) % ROSTER.length; Sound.play('blip'); }
       if (e.lp || e.hp || e.lk || e.hk || e.sp) { s.locked = true; Sound.play('select'); }
@@ -800,10 +864,19 @@
       ctx.strokeRect(x - 3 + o, y0 - 3 + o, cw + 6 - o * 2, ch + 6 - o * 2); ctx.restore();
       T(i ? '2P' : '1P', x + (i ? cw - 8 : 8), y0 + ch - 10, 22, { align: i ? 'right' : 'left', fill: col, stroke: '#000', sw: 4 });
     }
+    if (G.mode === 1) {                                             // CPU level, shown between the two fighters
+      const DF = diffNow(), lock = G.sel[0].locked;
+      T('LEVEL', 480, 146, 24, { align: 'center', fill: '#c9b6ff', stroke: '#000', sw: 6 });
+      T(DF.name, 480, 198, 38, { align: 'center', fill: DF.col, stroke: '#000', sw: 9, glow: DF.col });
+      if (!lock) {
+        T('\u25B2', 480, 124, 28, { align: 'center', fill: G.diff < 2 ? '#fff' : '#555', stroke: '#000', sw: 5 });
+        T('\u25BC', 480, 238, 28, { align: 'center', fill: G.diff > 0 ? '#fff' : '#555', stroke: '#000', sw: 5 });
+      }
+    }
     const allLocked = G.sel[0].locked && G.sel[1].locked;
     if (!allLocked) T('◀ SELECT YOUR FIGHTER ▶', 480, 950, 28, { align: 'center', fill: '#ffd45a', stroke: '#000', sw: 7 });
     else if ((G.frame >> 3) & 1) T('GET READY!', 480, 950, 30, { align: 'center', fill: '#fff', stroke: '#000', sw: 7 });
-    T(G.mode === 1 ? 'MOVE A D   PICK J K U I' : 'P1 A D + J K U I   P2 ← → + NUMPAD', 480, 978, 16, { align: 'center', fill: '#c9b6ff', stroke: '#000', sw: 4 });
+    T(G.mode === 1 ? 'A D FIGHTER   W S LEVEL   PICK J K U I' : 'P1 A D + J K U I   P2 ← → + NUMPAD', 480, 978, 16, { align: 'center', fill: '#c9b6ff', stroke: '#000', sw: 4 });
   }
 
   function drawVS() {
@@ -831,7 +904,7 @@
       T(i ? (G.mode === 1 ? 'CPU' : 'PLAYER 2') : 'PLAYER 1', x + (i ? w : 0), y - 18, 26, { align: i ? 'right' : 'left', fill: i ? '#7fe9ff' : '#ffd45a', stroke: '#000', sw: 5 });
     }
     T('VS', 480, 560, 190, { font: FONT_TITLE, align: 'center', skew: 0.25, sx: 1 + (1 - e) * 2, fill: ['#fff', '#ffd23d', '#ff3d2d'], stroke: '#26002e', sw: 22, glow: '#ff5a1f', blur: 36 });
-    if (G.mode === 1) T('OPPONENT ' + G.ladder, 480, 130, 30, { align: 'center', fill: '#fff', stroke: '#000', sw: 7 });
+    if (G.mode === 1) T(diffNow().name + '  -  OPPONENT ' + G.ladder, 480, 130, 30, { align: 'center', fill: '#fff', stroke: '#000', sw: 7 });
     T(Stage.DEFS[G.stageIdx].name, 480, 950, 26, { align: 'center', fill: '#c9b6ff', stroke: '#000', sw: 6 });
   }
 
@@ -925,7 +998,7 @@
   // ============================================================================================================
   //  boot
   // ============================================================================================================
-  window.CATZ = { G, ROSTER, startOne, startTwo, startAttract, startVS, startFightFromVS, screenTap, newMatch, fighters: () => G.fight && G.fight.f, Poses, Rig };
+  window.CATZ = { G, ROSTER, DIFFS, startOne, startTwo, startAttract, startVS, startFightFromVS, screenTap, newMatch, fighters: () => G.fight && G.fight.f, Poses, Rig };
 
   function fontsReady() {
     if (!document.fonts || !document.fonts.load) return Promise.resolve();
@@ -938,6 +1011,9 @@
   Promise.all([Rig.load(), fontsReady()]).then(() => {
     for (const r of ROSTER) Rig.sprites(r.hue);
     const q = new URLSearchParams(location.search), go = q.get('go');
+    try { const v = parseInt(localStorage.getItem('catz-diff'), 10); if (v >= 0 && v < DIFFS.length) G.diff = v; } catch (e) { /* ignore */ }
+    if (q.get('diff') !== null && +q.get('diff') >= 0 && +q.get('diff') < DIFFS.length) G.diff = +q.get('diff');
+    emit('catz:ready', { difficulties: DIFFS.map(x => x.name), difficulty: diffNow().name });
     startAttract();
     if (go === 'select') startSelect(+q.get('mode') || 1);
     if (go === 'fight' || go === 'vs') {
