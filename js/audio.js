@@ -4,6 +4,7 @@ const Sound = (() => {
   let muted = false, musicOn = true, musicTimer = null, step = 0, nextT = 0, mode = 'menu';
 
   function init() {
+    if (window.CATZ && window.CATZ.G && window.CATZ.G.soon) return;      // no sound while the game is gated
     if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;

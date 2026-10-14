@@ -72,7 +72,9 @@
     const d = hot('coin', cx - 6, cy, 36, w === 'one' ? 'Insert coin - 1 player' : 'Insert coin - 2 players');
     d.style.borderRadius = '10px';
     d.addEventListener('pointerdown', e => {
-      e.preventDefault(); Sound.init(); Sound.play('coin');
+      e.preventDefault();
+      if (window.CATZ && CATZ.G.soon) return;                 // gated: coin slots do nothing
+      Sound.init(); Sound.play('coin');
       d.classList.add('on'); setTimeout(() => d.classList.remove('on'), 220);
       if (window.CATZ && CATZ.G.screen === 'attract') (w === 'one' ? CATZ.startOne : CATZ.startTwo)();
       else if (window.CATZ) CATZ.screenTap();
@@ -133,9 +135,9 @@
   const cycle = () => { userView = true; mode = (mode + 1) % RECTS.length; applyView(true); };
   // camera: whole machine on the title screen, glide in to screen + controls once a game starts
   document.addEventListener('catz-screen', e => {
-    const sc = e.detail, inGame = !(sc === 'attract' || sc === 'boot');
+    const sc = e.detail, inGame = !(sc === 'attract' || sc === 'boot' || sc === 'soon');
     if (!userView) { mode = inGame ? 1 : (coarse ? 1 : 0); applyView(true); }
-    document.getElementById('help').classList.toggle('away', sc === 'fight' || sc === 'vs');
+    document.getElementById('help').classList.toggle('away', sc === 'fight' || sc === 'vs' || sc === 'soon');
   });
 
   // ---- toolbar -----------------------------------------------------------------------------------------------------

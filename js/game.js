@@ -33,9 +33,12 @@
     { name: 'HARD',   skill: 0.6,  react: 1.15, punish: 1.35, cool: 0.75, dealt: 0.9,  taken: 1.15, mercy: 0.35, mult: 1.75, col: '#ff5a5a' },
   ];
   const diffNow = () => DIFFS[G.diff] || DIFFS[1];
+  const CFG = window.CATZ_CONFIG || {};
+  const DEV = new URLSearchParams(location.search).get('dev') === '1';
+  const SOON = !!CFG.comingSoon && !DEV;        // gated: show the COMING SOON screen, game cannot start
 
   const G = {
-    _screen: 'boot', diff: 1, frame: 0, mode: 1, ladder: 1, fight: null, projs: [], fx: [], shake: 0, hitstop: 0,
+    _screen: 'boot', diff: 1, soon: SOON, frame: 0, mode: 1, ladder: 1, fight: null, projs: [], fx: [], shake: 0, hitstop: 0,
     banner: null, sel: [{ i: 0, locked: false }, { i: 3, locked: false }], selT: 0, stageIdx: 0, vsT: 0, resT: 0,
     paused: false, debug: false, slow: false, acc: 0, combo: [null, null], menuPrev: [blankCtl(), blankCtl()],
   };
@@ -920,6 +923,20 @@
     if (G.resT > 40 && ((G.frame >> 5) & 1)) T(G.mode === 1 && humanWon ? 'START: NEXT FIGHT' : 'PRESS START', 480, 640, 32, { align: 'center', fill: '#fff', stroke: '#000', sw: 7, glow: '#ff2bd6' });
   }
 
+  function drawSoon() {
+    const t = G.frame, fl = (t % 300 > 250 && ((t >> 2) & 1)) ? 0.4 : 1;           // occasional neon flicker
+    ctx.drawImage(Stage.get(0), 0, 0);
+    Stage.drawGrid(ctx, 0, t);
+    ctx.fillStyle = 'rgba(8,0,20,0.5)'; ctx.fillRect(0, 0, W, H);
+    ctx.save(); ctx.globalAlpha = fl;
+    Stage.panther(ctx, 480, 280, 210, '#d6ff2a', '#c8ff00', 3.4);
+    T('CATZ FIGHT', 480, 480, 64, { font: FONT_TITLE, align: 'center', skew: 0.2, fill: ['#ffd23d', '#ff7a1a', '#ff2d8a'], stroke: '#1d0030', sw: 14, glow: '#ff2bd6', blur: 24 });
+    T('COMING', 480, 640, 128, { font: FONT_TITLE, align: 'center', skew: 0.2, fill: ['#ff3d9a', '#c21cff', '#4d4dff'], stroke: '#1d0030', sw: 18, glow: '#7a2bff', blur: 30 });
+    T('SOON', 480, 770, 128, { font: FONT_TITLE, align: 'center', skew: 0.2, fill: ['#fff', '#ffd23d', '#ff7a1a'], stroke: '#1d0030', sw: 18, glow: '#ff2bd6', blur: 30 });
+    ctx.restore();
+    T('NEW FIGHTERS ARE ON THE WAY', 480, 880, 24, { align: 'center', fill: '#7fe9ff', stroke: '#000', sw: 7 });
+  }
+
   function drawBoot(msg) {
     ctx.fillStyle = '#07000f'; ctx.fillRect(0, 0, W, H);
     Stage.panther(ctx, 480, 440, 180, '#d6ff2a', '#c8ff00', 3.2);
@@ -931,6 +948,7 @@
     ctx.clearRect(0, 0, W, H);
     switch (G.screen) {
       case 'boot': drawBoot(G.bootMsg); break;
+      case 'soon': drawSoon(); break;
       case 'attract': drawAttract(); break;
       case 'select': drawSelect(); break;
       case 'vs': drawVS(); break;
@@ -949,7 +967,8 @@
     requestAnimationFrame(loop);
     if (!last) last = now;
     let dt = Math.min(100, now - last); last = now;
-    if (G.screen === 'boot' || G.paused) { render(); return; }
+    if (G.screen === 'soon') G.frame++;
+    if (G.screen === 'boot' || G.screen === 'soon' || G.paused) { render(); return; }
     G.acc += dt;
     let n = 0;
     while (G.acc >= 1000 / 60 && n < 5) {
@@ -962,10 +981,11 @@
     render();
   }
 
-  function startOne() { Sound.init(); startSelect(1); }
-  function startTwo() { Sound.init(); startSelect(2); }
+  function startOne() { if (G.soon) return; Sound.init(); startSelect(1); }
+  function startTwo() { if (G.soon) return; Sound.init(); startSelect(2); }
 
   Input.onAnyPress((p, name, e) => {
+    if (G.soon) return;
     Sound.init();
     if (e && e.code === 'KeyP' || e && e.code === 'Escape') { if (G.screen === 'fight') G.paused = !G.paused; return; }
     if (e && e.code === 'F2') { G.debug = !G.debug; return; }
@@ -990,6 +1010,7 @@
 
   // tapping the screen (touch / mouse) acts as START on the menus
   function screenTap() {
+    if (G.soon) return;
     Sound.init();
     if (G.screen === 'attract') startOne();
     else if (G.screen === 'result' && G.resT > 40) afterResult();
@@ -1013,7 +1034,8 @@
     const q = new URLSearchParams(location.search), go = q.get('go');
     try { const v = parseInt(localStorage.getItem('catz-diff'), 10); if (v >= 0 && v < DIFFS.length) G.diff = v; } catch (e) { /* ignore */ }
     if (q.get('diff') !== null && +q.get('diff') >= 0 && +q.get('diff') < DIFFS.length) G.diff = +q.get('diff');
-    emit('catz:ready', { difficulties: DIFFS.map(x => x.name), difficulty: diffNow().name });
+    emit('catz:ready', { difficulties: DIFFS.map(x => x.name), difficulty: diffNow().name, comingSoon: G.soon });
+    if (G.soon) { G.screen = 'soon'; document.body.classList.add('ready'); return; }
     startAttract();
     if (go === 'select') startSelect(+q.get('mode') || 1);
     if (go === 'fight' || go === 'vs') {
