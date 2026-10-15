@@ -97,6 +97,10 @@ def joints(P):
             A=centroid(M[f'leg_{s}_sh'] & bo),
             bottom=int(yb),
         )
+    area = {s: int(M[f'arm_{s}_up'].sum()) for s in 'lr'}
+    # an upper-arm piece that is much smaller than its twin is only the visible sliver of an arm that is mostly behind the chest;
+    # it is drawn behind the torso so the chest covers its root
+    J['under_torso'] = [s for s in 'lr' if area[s] < 0.6 * area['l' if s == 'r' else 'r']]
     hl, hr = J['leg_l']['H'], J['leg_r']['H']
     J['hip_pivot'] = ((hl[0] + hr[0]) / 2, 730.0)
     J['ground_y'] = max(J['leg_l']['bottom'], J['leg_r']['bottom'])
@@ -106,7 +110,8 @@ def joints(P):
 
 def rnd(o):
     if isinstance(o, dict): return {k: rnd(v) for k, v in o.items()}
-    if isinstance(o, (tuple, list)): return [round(float(x), 1) for x in o]
+    if isinstance(o, (tuple, list)):
+        return [round(float(x), 1) if isinstance(x, (int, float)) else x for x in o]
     return o
 
 

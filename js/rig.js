@@ -112,15 +112,32 @@ const Rig = (() => {
     sk.head = { pivot: toTorso(J.neck), a: tr + (p.hd || 0) * DEG };
     for (const s of ['l', 'r']) {
       const a = J['arm_' + s], G = g.arm[s];
-      const S = toTorso(a.S), T = [S[0] + p['h' + s + 'x'], S[1] + p['h' + s + 'y']];
+      const S = toTorso(a.S);
+      let vx = p['h' + s + 'x'], vy = p['h' + s + 'y'];
+      const dmin = 0.7 * (G.L1 + G.L2h), dv = Math.hypot(vx, vy);
+      if (dv < dmin) { if (dv < 1) { vx = 1; vy = 0; } else { vx /= dv; vy /= dv; } vx *= dmin; vy *= dmin; }
+      const T = [S[0] + vx, S[1] + vy];
       const r = ik(S, T, G.L1, G.L2h, +1);
-      const a1 = ang(S, r.e) - G.r1, a2 = ang(r.e, r.end) - G.r2;
-      const W = rot([r.e[0] + G.wv[0], r.e[1] + G.wv[1]], r.e, a2);
-      sk['arm_' + s] = { S, E: r.e, W, a1, a2 };
+      let E = r.e, Hc = r.end, a1 = ang(S, E) - G.r1;
+      if ((J.under_torso || []).indexOf(s) >= 0) {
+        // this upper-arm piece is only the visible sliver of an arm that sits mostly behind the chest: keep it from swinging
+        // out (its tip would poke past the shoulder) and let the forearm do the reaching
+        // it follows the torso's lean and may only swing a little relative to it, so it always covers the torso's shoulder stub
+        const lo = tr - 45 * DEG, hi = tr + 10 * DEG;
+        if (a1 < lo || a1 > hi) {
+          a1 = Math.max(lo, Math.min(hi, a1));
+          E = rot([S[0] + (a.E[0] - a.S[0]), S[1] + (a.E[1] - a.S[1])], S, a1);
+          const dx = T[0] - E[0], dy = T[1] - E[1], dd = Math.hypot(dx, dy) || 1, m = Math.min(G.L2h, dd);
+          Hc = [E[0] + dx / dd * m, E[1] + dy / dd * m];
+        }
+      }
+      const a2 = ang(E, Hc) - G.r2;
+      const W = rot([E[0] + G.wv[0], E[1] + G.wv[1]], E, a2);
+      sk['arm_' + s] = { S, E, W, a1, a2 };
     }
     for (const s of ['l', 'r']) {
       const l = J['leg_' + s], G = g.leg[s], f = s === 'r' ? 'fr' : 'fl';
-      const Hh = [l.H[0] + off[0], l.H[1] + off[1]];
+      const Hh = toTorso(l.H);
       const T = [J.center_x + p[f + 'x'], l.A[1] + G.drop - p[f + 'y']];
       const r = ik(Hh, T, G.L1, G.L2, -1);
       sk['leg_' + s] = { Hh, K: r.e, A: r.end, a1: ang(Hh, r.e) - G.r1, a2: ang(r.e, r.end) - G.r2, a3: (p[f + 'a'] || 0) * DEG + (ang(r.e, r.end) - G.r2) * 0.3 };   // boot follows the shin a little so the cuff never opens a gap
@@ -130,6 +147,7 @@ const Rig = (() => {
 
   // ---- drawing -------------------------------------------------------------------------------------------------
   function part(ctx, spr, name, restPivot, nowPivot, a) {
+    if (opts.hide && opts.hide.indexOf(name) >= 0) return;          // debugging aid (tools/posesheet.html?hide=...)
     const P = spr.def.parts[name];
     ctx.save();
     ctx.translate(nowPivot[0], nowPivot[1]);
@@ -163,12 +181,16 @@ const Rig = (() => {
         part(ctx, spr, 'leg_' + side + '_sh', d.K, k.K, k.a2);
       }
     }
+    const under = J.under_torso || [];
+    for (const side of under) { const k = sk['arm_' + side], d = J['arm_' + side]; part(ctx, spr, 'arm_' + side + '_up', d.S, k.S, k.a1); }
     part(ctx, spr, 'torso', J.hip_pivot, sk.torso.pivot, sk.torso.a);
     part(ctx, spr, 'head', J.neck, sk.head.pivot, sk.head.a);
     for (const side of ['l', 'r']) {                      // arms: rear first; hand -> forearm -> upper arm
       const k = sk['arm_' + side], d = J['arm_' + side];
       part(ctx, spr, 'hand_' + side, d.W, k.W, k.a2);
-      if (opts.armUpperOnTop) {
+      if (under.indexOf(side) >= 0) {
+        part(ctx, spr, 'arm_' + side + '_lo', d.E, k.E, k.a2);
+      } else if (opts.armUpperOnTop) {
         part(ctx, spr, 'arm_' + side + '_lo', d.E, k.E, k.a2);
         part(ctx, spr, 'arm_' + side + '_up', d.S, k.S, k.a1);
       } else {

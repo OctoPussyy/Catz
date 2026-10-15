@@ -4,7 +4,7 @@
 <script>
 (async()=>{
  await Rig.load();
- const _q=new URLSearchParams(location.search); if(_q.get('arm')==='lo')Rig.opts.armUpperOnTop=false; if(_q.get('leg')==='sh')Rig.opts.legThighOnTop=false;
+ const _q=new URLSearchParams(location.search); if(_q.get('arm')==='lo')Rig.opts.armUpperOnTop=false; if(_q.get('hide'))Rig.opts.hide=_q.get('hide').split(','); if(_q.get('leg')==='sh')Rig.opts.legThighOnTop=false;
  const c=document.getElementById('c'),x=c.getContext('2d');
  const spr=Rig.sprites('prison',0), M=Poses.Moves, P=Poses.poses;
  const list=[

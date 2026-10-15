@@ -174,6 +174,9 @@ CHARS["prison"] = {
    ],
    "bottom": 1497
   },
+  "under_torso": [
+   "r"
+  ],
   "hip_pivot": [
    542.3,
    730.0

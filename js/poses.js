@@ -3,7 +3,7 @@
 const Poses = (() => {
   const BASE = {
     px: 0, py: 50, tr: 5, br: 0, bx: 0, lift: 0, hd: 0,
-    hrx: 125, hry: 135, hlx: 255, hly: 150,
+    hrx: 230, hry: 20, hlx: 270, hly: 40,
     frx: 165, fry: 0, flx: -205, fly: 0, fra: 0, fla: 0,
   };
   const KEYS = Object.keys(BASE);
