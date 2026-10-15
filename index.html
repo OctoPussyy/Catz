@@ -10,6 +10,8 @@
 <style>
   :root { --ink: #f4eaff; --pink: #ff2bd6; --bg: #040008; }
   * { box-sizing: border-box; }
+  /* no double-tap / pinch zoom or scroll bounce while playing: the game owns every touch */
+  html, body { touch-action: none; overscroll-behavior: none; -webkit-touch-callout: none; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink);
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; -webkit-user-select: none; user-select: none; }
   body { background: #0d0b10; }
@@ -92,6 +94,11 @@
        <b>Z</b> zoom &middot; <b>M</b> mute &middot; <b>P</b> pause &middot; <b>F2</b> hitboxes</p>
   </div>
 
+  <script>
+    // iOS Safari ignores user-scalable=no: block its zoom gestures explicitly
+    ['gesturestart', 'gesturechange', 'gestureend', 'dblclick'].forEach(function (t) { document.addEventListener(t, function (e) { e.preventDefault(); }, { passive: false }); });
+    document.addEventListener('touchmove', function (e) { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  </script>
   <script src="js/config.js"></script>
   <script src="js/chars/prison.js"></script>
   <script src="js/chars/crimson_paw.js"></script>
