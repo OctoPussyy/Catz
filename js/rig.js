@@ -170,7 +170,9 @@ const Rig = (() => {
     ctx.translate(-J.center_x, -J.ground_y);
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
 
-    for (const side of ['l', 'r']) {                      // legs: rear first; boot -> shin -> thigh
+    // legs: rear first, unless the rear leg is the one lifted for a kick, then it must pass IN FRONT of the standing leg
+    const legOrder = sk.leg_l.A[1] < sk.leg_r.A[1] - 60 ? ['r', 'l'] : ['l', 'r'];
+    for (const side of legOrder) {                        // boot -> shin -> thigh
       const k = sk['leg_' + side], d = J['leg_' + side];
       part(ctx, spr, 'boot_' + side, d.A, k.A, k.a3);
       if (opts.legThighOnTop) {
