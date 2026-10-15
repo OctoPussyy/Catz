@@ -82,7 +82,7 @@
   });
 
   // tapping the screen starts the game / continues
-  document.getElementById('scr').addEventListener('pointerdown', e => { Sound.init(); if (window.CATZ) CATZ.screenTap(); });
+  document.getElementById('scr').addEventListener('pointerdown', e => { Sound.init(); if (window.CATZ) CATZ.screenTap(e); });
 
   // ---- screen: warp the 960x988 canvas onto the keystoned glass (corners measured from the cabinet image) -------
   function homography(src, dst) {

@@ -60,7 +60,8 @@ After it forwards `catz:match_end` to its backend, the website posts the outcome
 ```js
 frame.contentWindow.postMessage({ type: 'catz:reward', matchId: m.matchId, granted: 5 /* 0 if none */, capped: false /* true if the daily cap stopped it */ }, GAME_ORIGIN);
 ```
-The victory screen then shows `+5 REP`, `DAILY REP LIMIT REACHED`, or nothing. Until the answer arrives it shows `CHECKING REP...`.
+If the player is not signed in, include `signedIn: false` and the victory screen shows a CONNECT X TO EARN REP button that opens https://catzindahood.xyz/initiate in a new tab.
+The victory screen then shows `+5 REP`, `DAILY REP LIMIT REACHED`, the connect button, or nothing. Until the answer arrives it shows `CHECKING REP...`.
 The game only shows rep when it is embedded and the handshake (section 1) happened, so a standalone copy never claims rep.
 
 ## 6. What the backend must check before it awards rep

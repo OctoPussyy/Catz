@@ -539,7 +539,7 @@
     if (d.type === 'catz:reward') {                    // the website tells us what it actually awarded for a finished match
       if (Host.token && e.origin !== Host.origin && Host.origin !== '*') return;
       const F = G.fight;
-      if (F && d.matchId === F.id) F.reward = { state: d.granted > 0 ? 'granted' : (d.capped ? 'capped' : 'none'), amount: Math.max(0, Math.min(1000, +d.granted || 0)), t: Date.now() };
+      if (F && d.matchId === F.id) F.reward = { state: d.signedIn === false ? 'signedout' : (d.granted > 0 ? 'granted' : (d.capped ? 'capped' : 'none')), amount: Math.max(0, Math.min(1000, +d.granted || 0)), t: Date.now() };
       return;
     }
     if (d.type !== 'catz:init') return;
@@ -647,7 +647,7 @@
       case 'attract': case 'fight': updateFight(); updateFx(); break;
       case 'select': updateSelect(); break;
       case 'vs': G.vsT++; if (G.vsT >= 130) startFightFromVS(); break;
-      case 'result': G.resT++; updateFight(); updateFx(); break;
+      case 'result': G.resT++; updateFight(); updateFx(); if (G.resT > 60 * 12) afterResult(); break;
     }
   }
 
@@ -957,8 +957,16 @@
       if (R.state === 'granted') T('+' + R.amount + ' REP', 480, 575, 56, { font: FONT_TITLE, align: 'center', skew: 0.2, fill: ['#fff', '#7dff9a', '#18b86a'], stroke: '#02200f', sw: 12, glow: '#2dff8a' });
       else if (R.state === 'capped') T('DAILY REP LIMIT REACHED', 480, 570, 24, { align: 'center', fill: '#ffd45a', stroke: '#000', sw: 7 });
       else if (R.state === 'pending') T(late ? 'REP WILL APPEAR SHORTLY' : 'CHECKING REP...', 480, 570, 24, { align: 'center', fill: '#c9b6ff', stroke: '#000', sw: 7 });
+      else if (R.state === 'signedout') {
+        const b = G.cta = { x: 150, y: 528, w: 660, h: 66 };            // clickable / tappable (see screenTap)
+        const hot = (G.frame >> 4) & 1;
+        ctx.fillStyle = hot ? '#ffe14a' : '#ffd23d'; rr(b.x, b.y, b.w, b.h, 14); ctx.fill();
+        ctx.lineWidth = 5; ctx.strokeStyle = '#26002e'; ctx.stroke();
+        T('CONNECT X TO EARN REP', 480, 573, 28, { align: 'center', fill: '#1d0030' });
+      }
     }
-    if (G.resT > 40 && ((G.frame >> 5) & 1)) T(G.mode === 1 && humanWon ? 'START: NEXT FIGHT' : 'PRESS START', 480, 680, 32, { align: 'center', fill: '#fff', stroke: '#000', sw: 7, glow: '#ff2bd6' });
+    if (!(R && R.state === 'signedout')) G.cta = null;
+    if (G.resT > 40 && ((G.frame >> 5) & 1)) T('START: PLAY AGAIN', 480, 690, 32, { align: 'center', fill: '#fff', stroke: '#000', sw: 7, glow: '#ff2bd6' });
   }
 
   function drawSoon() {
@@ -1037,19 +1045,21 @@
     }
   });
 
-  function afterResult() {
-    const F = G.fight;
-    if (G.mode === 1 && F.f[0].wins >= 2) {
-      G.ladder++;
-      const c2 = pickOther(F.f[0].ch);
-      startVS(F.f[0].ch, c2);
-    } else startAttract();
-  }
+  // after every finished game: straight back to character select, so the player can change fighter or level
+  function afterResult() { G.cta = null; startSelect(G.mode); }
 
   // tapping the screen (touch / mouse) acts as START on the menus
-  function screenTap() {
+  const CONNECT_X_URL = 'https://catzindahood.xyz/initiate';
+  function screenTap(e) {
     if (G.soon) return;
     Sound.init();
+    if (G.screen === 'result' && G.cta && e && typeof e.offsetX === 'number') {
+      const c = G.cta;
+      if (e.offsetX >= c.x && e.offsetX <= c.x + c.w && e.offsetY >= c.y && e.offsetY <= c.y + c.h) {
+        try { window.open(CONNECT_X_URL, '_blank', 'noopener'); } catch (err) { /* ignore */ }
+        return;
+      }
+    }
     if (G.screen === 'attract') startOne();
     else if (G.screen === 'result' && G.resT > 40) afterResult();
   }
