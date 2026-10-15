@@ -1,25 +1,24 @@
 <!doctype html><meta charset="utf-8"><base href="../"><body style="margin:0;background:#1a0a2e">
 <canvas id="c" width="2000" height="1250"></canvas>
-<script src="js/parts.js"></script><script src="js/rig.js"></script><script src="js/poses.js"></script>
+<script src="js/chars/prison.js"></script><script src="js/rig.js"></script><script src="js/poses.js"></script>
 <script>
 (async()=>{
  await Rig.load();
+ const _q=new URLSearchParams(location.search); if(_q.get('arm')==='lo')Rig.opts.armUpperOnTop=false; if(_q.get('leg')==='sh')Rig.opts.legThighOnTop=false;
  const c=document.getElementById('c'),x=c.getContext('2d');
- const spr=Rig.sprites(0);
- const M=Poses.Moves;
+ const spr=Rig.sprites('prison',0), M=Poses.Moves, P=Poses.poses;
  const list=[
-  ['stand',Poses.poses.stand],['crouch',Poses.poses.crouch],['blockS',Poses.poses.blockS],['blockC',Poses.poses.blockC],
-  ['walkF',Poses.walk(0.8,1)],['jumpUp',Poses.poses.jumpUp],['hitHigh',Poses.poses.hitHigh],['hitLow',Poses.poses.hitLow],['win',Poses.poses.win],
-  ['LP',Poses.sample(M.LP.kf,6)],['HP',Poses.sample(M.HP.kf,12)],['LK',Poses.sample(M.LK.kf,9)],['HK',Poses.sample(M.HK.kf,16)],['SP',Poses.sample(M.SP.kf,20)],
-  ['cLP',Poses.sample(M.cLP.kf,7,Poses.CROUCH)],['cLK',Poses.sample(M.cLK.kf,11,Poses.CROUCH)],['jK',Poses.sample(M.jK.kf,10)],
-  ['fall.4',Poses.fall(.4)],['fall.7',Poses.fall(.7)],['down',Poses.fall(1)],
+  ['stand',P.stand],['crouch',P.crouch],['blockS',P.blockS],['blockC',P.blockC],['walkF',Poses.walk(0.8,1)],['jumpUp',P.jumpUp],
+  ['hitHigh',P.hitHigh],['hitLow',P.hitLow],['win',P.win],['LP',Poses.sample(M.LP.kf,6)],['HP',Poses.sample(M.HP.kf,12)],['LK',Poses.sample(M.LK.kf,9)],
+  ['HK',Poses.sample(M.HK.kf,16)],['SP',Poses.sample(M.SP.kf,20)],['cLP',Poses.sample(M.cLP.kf,7,Poses.CROUCH)],['cLK',Poses.sample(M.cLK.kf,11,Poses.CROUCH)],
+  ['jK',Poses.sample(M.jK.kf,10)],['fall.4',Poses.fall(.4)],['fall.7',Poses.fall(.7)],['down',Poses.fall(1)],
+  ['elbows 90',Poses.make({hrx:60,hry:-120,hlx:200,hly:-60})],['knees deep',Poses.make({py:330,tr:14,frx:200,flx:-245})],
  ];
- const per=6, cw=330, ch=600;
- const q=new URLSearchParams(location.search);const from=+q.get('from')||0,to=+q.get('to')||list.length;const sc=+q.get('s')||0.38;
- const sel=list.slice(from,to);
- sel.forEach(([n,p],i)=>{
-  const col=i%per,row=Math.floor(i/per);
-  const gx=col*cw+cw/2, gy=row*ch+ch-40;
+ const q=new URLSearchParams(location.search);const from=+q.get('from')||0,to=+q.get('to')||list.length,sc=+q.get('s')||0.38,per=+q.get('per')||6;
+ const cw=330,ch=+q.get('ch')||600;
+ const only=(q.get('only')||'').split(',').filter(Boolean).map(Number);
+ (only.length?only.map(i=>list[i]):list.slice(from,to)).forEach(([n,p],i)=>{
+  const col=i%per,row=Math.floor(i/per),gx=col*cw+cw/2,gy=row*ch+ch-40;
   x.fillStyle='#ff0';x.fillRect(gx-cw/2+2,gy,cw-4,1);
   Rig.draw(x,spr,p,gx,gy,1,sc);
   x.fillStyle='#fff';x.font='14px monospace';x.fillText(n,gx-cw/2+8,row*ch+20);

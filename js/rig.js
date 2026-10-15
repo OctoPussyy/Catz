@@ -1,40 +1,43 @@
-// Paper-doll rig: draws a fighter from the sliced parts, solving elbows/knees with 2-bone IK.
-// Everything here works in ORIGINAL sprite coordinates (1024x1536, y down). The sprite faces +x.
+// Paper-doll rig for the 14-piece characters (see tools/build_char.py). Works in ORIGINAL sprite coordinates
+// (1024x1536, y down); the sprite faces +x. Arms and legs are solved with 2-bone IK, the head hangs off the neck pivot.
+//   viewer-left limbs = 'l' (rear), viewer-right limbs = 'r' (front).  Pose fields: see poses.js
 const Rig = (() => {
-  const J = PARTS.joints;
-  const R0 = PARTS.scale;                       // stored parts are R0 x original size
   const DEG = Math.PI / 180;
   const len = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
   const ang = (a, b) => Math.atan2(b[1] - a[1], b[0] - a[0]);
+  const PARTS_LIST = ['torso', 'head', 'arm_l_up', 'arm_l_lo', 'hand_l', 'arm_r_up', 'arm_r_lo', 'hand_r',
+    'leg_l_th', 'leg_l_sh', 'boot_l', 'leg_r_th', 'leg_r_sh', 'boot_r'];
 
-  // bone lengths (from the rest skeleton)
-  const L = {
-    arm_r: [len(J.arm_r.S, J.arm_r.E), len(J.arm_r.E, J.arm_r.H)],
-    arm_l: [len(J.arm_l.S, J.arm_l.E), len(J.arm_l.E, J.arm_l.H)],
-    leg_b: [len(J.leg_b.Hp, J.leg_b.K), len(J.leg_b.K, J.leg_b.A)],
-    leg_a: [len(J.leg_a.Hp, J.leg_a.K), len(J.leg_a.K, J.leg_a.A)],
-  };
-  // rest bone angles
-  const REST = {
-    arm_r: [ang(J.arm_r.S, J.arm_r.E), ang(J.arm_r.E, J.arm_r.H)],
-    arm_l: [ang(J.arm_l.S, J.arm_l.E), ang(J.arm_l.E, J.arm_l.H)],
-    leg_b: [ang(J.leg_b.Hp, J.leg_b.K), ang(J.leg_b.K, J.leg_b.A)],
-    leg_a: [ang(J.leg_a.Hp, J.leg_a.K), ang(J.leg_a.K, J.leg_a.A)],
-  };
+  const opts = { armUpperOnTop: true, legThighOnTop: true, headOnTop: true };   // which piece covers the joint seam
+  const loaded = {};                           // char id -> { def, g, images }
 
-  // ---- image loading ------------------------------------------------------------------------------------
-  const images = {};
-  function load() {
-    return Promise.all(Object.entries(PARTS.parts).map(([name, p]) => new Promise((res, rej) => {
-      const im = new Image();
-      im.onload = () => { images[name] = im; res(); };
-      im.onerror = () => rej(new Error('failed to load ' + p.file));
-      im.src = p.file;
-    })));
+  // rest-pose geometry derived from the joint pivots
+  function geometry(def) {
+    const J = def.joints, g = { arm: {}, leg: {} };
+    for (const s of ['l', 'r']) {
+      const a = J['arm_' + s];
+      g.arm[s] = { L1: len(a.S, a.E), L2h: len(a.E, a.Hc), r1: ang(a.S, a.E), r2: ang(a.E, a.Hc), wv: [a.W[0] - a.E[0], a.W[1] - a.E[1]] };
+      const l = J['leg_' + s];
+      g.leg[s] = { L1: len(l.H, l.K), L2: len(l.K, l.A), r1: ang(l.H, l.K), r2: ang(l.K, l.A), drop: J.ground_y - l.bottom };
+    }
+    return g;
   }
 
-  // ---- hue-tinted variants -------------------------------------------------------------------------------
-  const variants = { 0: null };
+  function load() {
+    const ids = Object.keys(window.CHARS || {});
+    return Promise.all(ids.map(id => {
+      const def = CHARS[id], images = {};
+      loaded[id] = { def, g: geometry(def), images };
+      return Promise.all(PARTS_LIST.map(n => new Promise((res, rej) => {
+        const im = new Image();
+        im.onload = () => { images[n] = im; res(); };
+        im.onerror = () => rej(new Error('failed to load ' + def.parts[n].file));
+        im.src = def.parts[n].file;
+      })));
+    }));
+  }
+
+  // ---- hue-tinted variants ---------------------------------------------------------------------------------
   let filterOK = null;
   function canFilter() {
     if (filterOK === null) {
@@ -55,11 +58,7 @@ const Rig = (() => {
     const c = document.createElement('canvas');
     c.width = img.width; c.height = img.height;
     const x = c.getContext('2d');
-    if (canFilter()) {
-      x.filter = `hue-rotate(${hue}deg)`;
-      x.drawImage(img, 0, 0);
-      return c;
-    }
+    if (canFilter()) { x.filter = `hue-rotate(${hue}deg)`; x.drawImage(img, 0, 0); return c; }
     x.drawImage(img, 0, 0);
     try {
       const d = x.getImageData(0, 0, c.width, c.height), p = d.data, m = hueMatrix(hue);
@@ -70,88 +69,79 @@ const Rig = (() => {
         p[i + 2] = Math.max(0, Math.min(255, m[6] * r + m[7] * g + m[8] * b));
       }
       x.putImageData(d, 0, 0);
-    } catch (e) { /* tainted canvas (file://) - fall back to untinted */ }
+    } catch (e) { /* tainted canvas (file://): fall back to untinted */ }
     return c;
   }
-  function sprites(hue) {
+  const variants = {};
+  // sprite set for a character + hue: { id, def, g, imgs }
+  function sprites(id, hue) {
     hue = ((hue % 360) + 360) % 360;
-    if (hue === 0) return images;
-    if (!variants[hue]) {
-      const v = {};
-      for (const n in images) v[n] = tint(images[n], hue);
-      variants[hue] = v;
+    const L = loaded[id];
+    if (!L) throw new Error('unknown character ' + id);
+    const key = id + ':' + hue;
+    if (!variants[key]) {
+      const imgs = {};
+      for (const n in L.images) imgs[n] = hue === 0 ? L.images[n] : tint(L.images[n], hue);
+      variants[key] = { id, def: L.def, g: L.g, imgs };
     }
-    return variants[hue];
+    return variants[key];
   }
 
-  // ---- IK ------------------------------------------------------------------------------------------------
-  // returns elbow/knee position and the actual end point (clamped to reach). bend = +1 / -1 picks the side.
+  // ---- IK ------------------------------------------------------------------------------------------------------
   function ik(s, t, l1, l2, bend) {
-    let dx = t[0] - s[0], dy = t[1] - s[1];
-    let d = Math.hypot(dx, dy) || 0.001;
+    const dx = t[0] - s[0], dy = t[1] - s[1];
+    const d = Math.hypot(dx, dy) || 0.001;
     const maxD = (l1 + l2) * 0.998, minD = Math.abs(l1 - l2) + 2;
     const dd = Math.max(minD, Math.min(maxD, d));
     const ux = dx / d, uy = dy / d;
     const a = (l1 * l1 - l2 * l2 + dd * dd) / (2 * dd);
     const h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
-    const ex = s[0] + ux * a + (-uy) * h * bend;
-    const ey = s[1] + uy * a + (ux) * h * bend;
-    return { e: [ex, ey], end: [s[0] + ux * dd, s[1] + uy * dd] };
+    return { e: [s[0] + ux * a + (-uy) * h * bend, s[1] + uy * a + ux * h * bend], end: [s[0] + ux * dd, s[1] + uy * dd] };
   }
-
   function rot(p, c, a) {
     const co = Math.cos(a), si = Math.sin(a), x = p[0] - c[0], y = p[1] - c[1];
     return [c[0] + x * co - y * si, c[1] + x * si + y * co];
   }
 
-  // ---- skeleton solve -------------------------------------------------------------------------------------
-  // pose fields (see game.js): py,px,tr (torso rot deg), hrx,hry,hlx,hly (hand offsets from shoulders),
-  // frx,fry,flx,fly (ankle x offset from centre / height above ground), fra,fla (foot angle deg)
-  function solve(p) {
-    const hp = J.hip_pivot;
-    const off = [p.px || 0, p.py || 0];
-    const tr = (p.tr || 0) * DEG;
-    const hip0 = [hp[0] + off[0], hp[1] + off[1]];
+  // ---- skeleton solve ------------------------------------------------------------------------------------------
+  function solve(spr, p) {
+    const J = spr.def.joints, g = spr.g;
+    const hp = J.hip_pivot, off = [p.px || 0, p.py || 0], tr = (p.tr || 0) * DEG;
     const toTorso = pt => { const q = rot(pt, hp, tr); return [q[0] + off[0], q[1] + off[1]]; };
-
-    const sk = { torso: { pivot: hip0, a: tr } };
-    // arms
-    for (const side of ['r', 'l']) {
-      const key = 'arm_' + side, d = J[key];
-      const S = toTorso(d.S);
-      const T = [S[0] + p['h' + side + 'x'], S[1] + p['h' + side + 'y']];
-      const r = ik(S, T, L[key][0], L[key][1], +1);
-      sk[key] = { S, E: r.e, H: r.end,
-        a1: ang(S, r.e) - REST[key][0], a2: ang(r.e, r.end) - REST[key][1] };
+    const sk = { torso: { pivot: [hp[0] + off[0], hp[1] + off[1]], a: tr } };
+    sk.head = { pivot: toTorso(J.neck), a: tr + (p.hd || 0) * DEG };
+    for (const s of ['l', 'r']) {
+      const a = J['arm_' + s], G = g.arm[s];
+      const S = toTorso(a.S), T = [S[0] + p['h' + s + 'x'], S[1] + p['h' + s + 'y']];
+      const r = ik(S, T, G.L1, G.L2h, +1);
+      const a1 = ang(S, r.e) - G.r1, a2 = ang(r.e, r.end) - G.r2;
+      const W = rot([r.e[0] + G.wv[0], r.e[1] + G.wv[1]], r.e, a2);
+      sk['arm_' + s] = { S, E: r.e, W, a1, a2 };
     }
-    // legs
-    for (const side of ['b', 'a']) {
-      const key = 'leg_' + side, d = J[key];
-      const Hh = [d.Hp[0] + off[0], d.Hp[1] + off[1]];
-      const ax = J.center_x + p[(side === 'b' ? 'fr' : 'fl') + 'x'];
-      const ay = d.A[1] - p[(side === 'b' ? 'fr' : 'fl') + 'y'];
-      const r = ik(Hh, [ax, ay], L[key][0], L[key][1], -1);
-      sk[key] = { Hh, K: r.e, A: r.end,
-        a1: ang(Hh, r.e) - REST[key][0], a2: ang(r.e, r.end) - REST[key][1],
-        a3: (p[side === 'b' ? 'fra' : 'fla'] || 0) * DEG };
+    for (const s of ['l', 'r']) {
+      const l = J['leg_' + s], G = g.leg[s], f = s === 'r' ? 'fr' : 'fl';
+      const Hh = [l.H[0] + off[0], l.H[1] + off[1]];
+      const T = [J.center_x + p[f + 'x'], l.A[1] + G.drop - p[f + 'y']];
+      const r = ik(Hh, T, G.L1, G.L2, -1);
+      sk['leg_' + s] = { Hh, K: r.e, A: r.end, a1: ang(Hh, r.e) - G.r1, a2: ang(r.e, r.end) - G.r2, a3: (p[f + 'a'] || 0) * DEG + (ang(r.e, r.end) - G.r2) * 0.3 };   // boot follows the shin a little so the cuff never opens a gap
     }
     return sk;
   }
 
-  // ---- drawing --------------------------------------------------------------------------------------------
-  function drawPart(ctx, spr, name, pivotRest, pivotNow, a) {
-    const p = PARTS.parts[name], im = spr[name];
+  // ---- drawing -------------------------------------------------------------------------------------------------
+  function part(ctx, spr, name, restPivot, nowPivot, a) {
+    const P = spr.def.parts[name];
     ctx.save();
-    ctx.translate(pivotNow[0], pivotNow[1]);
+    ctx.translate(nowPivot[0], nowPivot[1]);
     ctx.rotate(a);
-    ctx.drawImage(im, p.ox - pivotRest[0], p.oy - pivotRest[1], p.w, p.h);
+    ctx.drawImage(spr.imgs[name], P.ox - restPivot[0], P.oy - restPivot[1], P.w, P.h);
     ctx.restore();
   }
 
   // Draw a whole fighter. (x, groundY) = screen position of the feet centre. facing = +1 / -1. s = scale.
   function draw(ctx, spr, pose, x, groundY, facing, s) {
-    const sk = solve(pose);
-    const hipH = J.ground_y - J.hip_pivot[1];     // body rotation (falls) pivots about the hip
+    const J = spr.def.joints, sk = solve(spr, pose);
+    const hipH = J.ground_y - J.hip_pivot[1];            // falls rotate about the hip
     ctx.save();
     ctx.translate(x + facing * (pose.bx || 0) * s, groundY - (pose.lift || 0) * s);
     ctx.scale(facing, 1);
@@ -162,30 +152,48 @@ const Rig = (() => {
     ctx.translate(-J.center_x, -J.ground_y);
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
 
-    // legs: rear leg first, each foot -> shin -> thigh (upper pieces cover the joint seams)
-    for (const key of ['leg_a', 'leg_b']) {
-      const k = sk[key], d = J[key];
-      drawPart(ctx, spr, key + '_ft', d.A, k.A, k.a3);
-      drawPart(ctx, spr, key + '_sh', d.K, k.K, k.a2);
-      drawPart(ctx, spr, key + '_th', d.Hp, k.Hh, k.a1);
+    for (const side of ['l', 'r']) {                      // legs: rear first; boot -> shin -> thigh
+      const k = sk['leg_' + side], d = J['leg_' + side];
+      part(ctx, spr, 'boot_' + side, d.A, k.A, k.a3);
+      if (opts.legThighOnTop) {
+        part(ctx, spr, 'leg_' + side + '_sh', d.K, k.K, k.a2);
+        part(ctx, spr, 'leg_' + side + '_th', d.H, k.Hh, k.a1);
+      } else {
+        part(ctx, spr, 'leg_' + side + '_th', d.H, k.Hh, k.a1);
+        part(ctx, spr, 'leg_' + side + '_sh', d.K, k.K, k.a2);
+      }
     }
-    // torso + head
-    drawPart(ctx, spr, 'torso', J.hip_pivot, sk.torso.pivot, sk.torso.a);
-    // arms: rear arm first
-    for (const key of ['arm_l', 'arm_r']) {
-      const k = sk[key], d = J[key];
-      drawPart(ctx, spr, key + '_lo', d.E, k.E, k.a2);
-      drawPart(ctx, spr, key + '_up', d.S, k.S, k.a1);
+    part(ctx, spr, 'torso', J.hip_pivot, sk.torso.pivot, sk.torso.a);
+    part(ctx, spr, 'head', J.neck, sk.head.pivot, sk.head.a);
+    for (const side of ['l', 'r']) {                      // arms: rear first; hand -> forearm -> upper arm
+      const k = sk['arm_' + side], d = J['arm_' + side];
+      part(ctx, spr, 'hand_' + side, d.W, k.W, k.a2);
+      if (opts.armUpperOnTop) {
+        part(ctx, spr, 'arm_' + side + '_lo', d.E, k.E, k.a2);
+        part(ctx, spr, 'arm_' + side + '_up', d.S, k.S, k.a1);
+      } else {
+        part(ctx, spr, 'arm_' + side + '_up', d.S, k.S, k.a1);
+        part(ctx, spr, 'arm_' + side + '_lo', d.E, k.E, k.a2);
+      }
     }
     ctx.restore();
     return sk;
   }
 
-  // screen position of a rig point (used for hit sparks / projectiles). pt is in sprite coords.
-  function toScreen(pt, x, groundY, facing, s, pose) {
-    const bx = (pt[0] - J.center_x) * s, by = (pt[1] - J.ground_y) * s;
-    return [x + facing * bx, groundY + by];
+  // assembled rest pose at half size (used for select / VS portraits); cached per sprite set
+  const rests = new WeakMap();
+  function restCanvas(spr) {
+    if (rests.has(spr)) return rests.get(spr);
+    const R = spr.def.scale, c = document.createElement('canvas');
+    c.width = Math.round(1024 * R); c.height = Math.round(1536 * R);
+    const x = c.getContext('2d');
+    x.imageSmoothingQuality = 'high';
+    const order = ['boot_l', 'leg_l_sh', 'leg_l_th', 'boot_r', 'leg_r_sh', 'leg_r_th', 'torso', 'head',
+      'arm_l_lo', 'hand_l', 'arm_l_up', 'arm_r_lo', 'hand_r', 'arm_r_up'];
+    for (const n of order) { const P = spr.def.parts[n]; x.drawImage(spr.imgs[n], P.ox * R, P.oy * R, P.w * R, P.h * R); }
+    rests.set(spr, c);
+    return c;
   }
 
-  return { load, sprites, solve, draw, toScreen, images, J, ik, L };
+  return { load, sprites, solve, draw, restCanvas, ik, PARTS_LIST, opts };
 })();

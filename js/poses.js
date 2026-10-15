@@ -2,7 +2,7 @@
 // shoulders, ankle targets are x offset from body centre / height above ground, all in original sprite pixels.
 const Poses = (() => {
   const BASE = {
-    px: 0, py: 50, tr: 5, br: 0, bx: 0, lift: 0,
+    px: 0, py: 50, tr: 5, br: 0, bx: 0, lift: 0, hd: 0,
     hrx: 125, hry: 135, hlx: 255, hly: 150,
     frx: 165, fry: 0, flx: -205, fly: 0, fra: 0, fla: 0,
   };
@@ -29,7 +29,7 @@ const Poses = (() => {
   }
 
   const CROUCH = { py: 250, tr: 12, frx: 200, flx: -245, hrx: 120, hry: 190, hlx: 250, hly: 215 };
-  const BLOCK = { tr: 8, hrx: 80, hry: -175, hlx: 330, hly: -125 };
+  const BLOCK = { hd: 7, tr: 8, hrx: 80, hry: -175, hlx: 330, hly: -125 };
   const BLOCK_C = Object.assign({}, BLOCK, { py: 250, tr: 14, frx: 200, flx: -245, hry: -60, hly: -10 });
 
   // ---- moves ------------------------------------------------------------------------------------------------
@@ -42,11 +42,11 @@ const Poses = (() => {
       sfx: 'whoosh', kf: [[0, {}], [6, { tr: -16, px: -25, hlx: 90, hly: 190, hrx: 150, hry: 110 }],
         [10, { tr: 26, px: 48, hlx: 545, hly: 10, hrx: 150, hry: 110, flx: -170, frx: 205 }], [14, { tr: 26, px: 48, hlx: 545, hly: 10, hrx: 150, hry: 110, flx: -170, frx: 205 }], [30, {}]] },
     LK: { name: 'front kick', S: 8, A: 4, R: 14, dmg: 7, hs: 17, bs: 11, kb: 5, height: 'mid', box: { x0: 50, x1: 250, y0: 110, y1: 250 },
-      sfx: 'whoosh', kf: [[0, {}], [4, { fry: 160, frx: 235, tr: -6, py: 55, fra: 25 }], [8, { frx: 610, fry: 470, fra: -72, tr: -14, py: 45, hry: 180 }],
-        [12, { frx: 610, fry: 470, fra: -72, tr: -14, py: 45, hry: 180 }], [26, {}]] },
+      sfx: 'whoosh', kf: [[0, {}], [4, { fry: 160, frx: 235, tr: -6, py: 55, fra: 25 }], [8, { frx: 610, fry: 470, fra: -50, tr: -14, py: 45, hry: 180 }],
+        [12, { frx: 610, fry: 470, fra: -50, tr: -14, py: 45, hry: 180 }], [26, {}]] },
     HK: { name: 'high kick', S: 14, A: 5, R: 22, dmg: 14, hs: 26, bs: 15, kb: 7, kd: true, height: 'high', box: { x0: 50, x1: 270, y0: 250, y1: 410 },
       sfx: 'whoosh2', kf: [[0, {}], [8, { fly: 200, flx: -60, tr: -10, py: 60, fla: 15 }],
-        [14, { flx: 480, fly: 900, fla: -35, tr: -32, py: 35, br: -5, hry: 200 }], [19, { flx: 480, fly: 900, fla: -35, tr: -32, py: 35, br: -5, hry: 200 }], [41, {}]] },
+        [14, { flx: 480, fly: 900, fla: -25, tr: -32, py: 35, br: -5, hry: 200 }], [19, { flx: 480, fly: 900, fla: -25, tr: -32, py: 35, br: -5, hry: 200 }], [41, {}]] },
     SP: { name: 'claw wave', S: 18, A: 1, R: 22, dmg: 0, special: true,
       sfx: 'special', kf: [[0, {}], [10, { hrx: -20, hry: 150, hlx: 120, hly: 150, tr: -18, px: -30 }],
         [18, { hrx: 490, hry: 30, hlx: 440, hly: 60, tr: 20, px: 35 }], [28, { hrx: 490, hry: 30, hlx: 440, hly: 60, tr: 20, px: 35 }], [41, {}]] },
@@ -69,8 +69,8 @@ const Poses = (() => {
     crouch: make(CROUCH),
     blockS: make(BLOCK),
     blockC: make(BLOCK_C),
-    hitHigh: make({ tr: -18, px: -30, py: 45, hrx: 30, hry: 250, hlx: 120, hly: 260, fra: 0 }),
-    hitLow: make({ tr: 20, px: 10, py: 120, hrx: 60, hry: 200, hlx: 150, hly: 240 }),
+    hitHigh: make({ hd: -16, tr: -18, px: -30, py: 45, hrx: 30, hry: 250, hlx: 120, hly: 260, fra: 0 }),
+    hitLow: make({ hd: 14, tr: 20, px: 10, py: 120, hrx: 60, hry: 200, hlx: 150, hly: 240 }),
     jumpUp: make({ py: 15, tr: 4, fry: 170, fly: 110, frx: 190, flx: -150, hry: 90, hly: 120 }),
     jumpDown: make({ py: 10, tr: 2, fry: 90, fly: 50, frx: 170, flx: -190, hry: 140, hly: 160 }),
     win: make({ py: 20, tr: 0, hrx: 175, hry: -330, hlx: 280, hly: 135, frx: 175, flx: -200 }),
@@ -102,7 +102,7 @@ const Poses = (() => {
   // knockdown/getup: u 0..1 over the fall. Rotates about the hip; lift drops the hip to the floor.
   function fall(u) {
     const e = ease(Math.min(1, u));
-    const p = make({ tr: -10 * (1 - e), py: 40, hrx: 40, hry: 260, hlx: 150, hly: 280 });
+    const p = make({ hd: -14 * e, tr: -10 * (1 - e), py: 40, hrx: 40, hry: 260, hlx: 150, hly: 280 });
     p.br = -90 * e;
     p.lift = -480 * e;
     p.hrx = 40 + 80 * e; p.hry = 260 - 60 * e; p.hlx = 150 - 90 * e; p.hly = 280;

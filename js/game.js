@@ -15,8 +15,9 @@
 
   // Placeholder roster: every fighter shares the one sprite set, tinted. Swap names/sprites later.
   const ROSTER = [
-    { name: 'CRIMSON', hue: 0 }, { name: 'EMBER', hue: 50 }, { name: 'VIPER', hue: 120 }, { name: 'FROST', hue: 190 },
-    { name: 'ORCHID', hue: 250 }, { name: 'HEX', hue: 300 }, { name: 'NEON', hue: 330 },
+    { name: 'CRIMSON', char: 'prison', hue: 0 }, { name: 'EMBER', char: 'prison', hue: 50 }, { name: 'VIPER', char: 'prison', hue: 120 },
+    { name: 'FROST', char: 'prison', hue: 190 }, { name: 'ORCHID', char: 'prison', hue: 250 }, { name: 'HEX', char: 'prison', hue: 300 },
+    { name: 'NEON', char: 'prison', hue: 330 },
   ];
 
   const cv = document.getElementById('screen');
@@ -52,7 +53,7 @@
   //  fighters
   // ============================================================================================================
   function newFighter(idx, chIdx, hue, ai) {
-    const f = { idx, ch: chIdx, hue, spr: Rig.sprites(hue), ai: ai || null, name: ROSTER[chIdx].name, wins: 0 };
+    const f = { idx, ch: chIdx, hue, spr: Rig.sprites(ROSTER[chIdx].char, hue), ai: ai || null, name: ROSTER[chIdx].name, wins: 0 };
     resetFighter(f, idx ? 620 : 340, idx ? -1 : 1);
     return f;
   }
@@ -650,9 +651,8 @@
   function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
 
   function portrait(spr, x, y, w, h) {
-    const p = PARTS.parts.torso, R = PARTS.scale, im = spr.torso;
-    const sx = (392 - p.ox) * R, sy = (18 - p.oy) * R, sw = 298 * R, sh = 354 * R;
-    ctx.drawImage(im, sx, sy, sw, sh, x, y, w, h);
+    const R = spr.def.scale, im = Rig.restCanvas(spr);               // head + upper chest of the assembled rest pose
+    ctx.drawImage(im, 392 * R, 14 * R, 298 * R, 356 * R, x, y, w, h);
   }
 
   // ---- world ---------------------------------------------------------------------------------------------------
@@ -844,7 +844,7 @@
     const cur = [G.sel[0].i, G.sel[1].i];
     for (let i = 0; i < 2; i++) {
       const ch = ROSTER[cur[i]], hue = (cur[0] === cur[1] && i === 1) ? (ch.hue + 180) % 360 : ch.hue;
-      const spr = Rig.sprites(hue), x = i ? 715 : 245, face = i ? -1 : 1;
+      const spr = Rig.sprites(ch.char, hue), x = i ? 715 : 245, face = i ? -1 : 1;
       const pose = G.sel[i].locked ? Poses.lerp(Poses.idle(G.frame), Poses.make({ tr: 10, py: 80, hrx: 300, hry: 100 }), 0.4 + 0.3 * Math.sin(G.frame * 0.3)) : Poses.idle(G.frame + i * 30);
       ctx.save(); ctx.globalAlpha = 0.5; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(x, 726, 140, 20, 0, 0, 7); ctx.fill(); ctx.restore();
       Rig.draw(ctx, spr, pose, x, 722, face, 0.38);
@@ -855,7 +855,7 @@
     ROSTER.forEach((r, i) => {
       const x = x0 + i * (cw + gap);
       ctx.fillStyle = '#10051c'; ctx.fillRect(x, y0, cw, ch);
-      const spr = Rig.sprites(r.hue); portrait(spr, x + 3, y0 + 3, cw - 6, ch - 6);
+      const spr = Rig.sprites(r.char, r.hue); portrait(spr, x + 3, y0 + 3, cw - 6, ch - 6);
       ctx.strokeStyle = '#8a5cff'; ctx.lineWidth = 3; ctx.strokeRect(x, y0, cw, ch);
     });
     // cursors
@@ -896,7 +896,7 @@
     sl('#3a0a00', '#ff5a1f', true); sl('#00243a', '#18b7ff', false);
     const [c1, c2] = G.vs;
     for (let i = 0; i < 2; i++) {
-      const ch = ROSTER[i ? c2 : c1], hue = (c1 === c2 && i) ? (ch.hue + 180) % 360 : ch.hue, spr = Rig.sprites(hue);
+      const ch = ROSTER[i ? c2 : c1], hue = (c1 === c2 && i) ? (ch.hue + 180) % 360 : ch.hue, spr = Rig.sprites(ch.char, hue);
       const w = 400, h = 480, x = i ? W - w - 40 + (1 - e) * 500 : 40 - (1 - e) * 500, y = 250;
       ctx.save();
       if (i) { ctx.translate(x + w, 0); ctx.scale(-1, 1); portrait(spr, 0, y, w, h); }
@@ -1030,7 +1030,7 @@
   requestAnimationFrame(loop);
   G.bootMsg = 'LOADING...';
   Promise.all([Rig.load(), fontsReady()]).then(() => {
-    for (const r of ROSTER) Rig.sprites(r.hue);
+    for (const r of ROSTER) Rig.sprites(r.char, r.hue);
     const q = new URLSearchParams(location.search), go = q.get('go');
     try { const v = parseInt(localStorage.getItem('catz-diff'), 10); if (v >= 0 && v < DIFFS.length) G.diff = v; } catch (e) { /* ignore */ }
     if (q.get('diff') !== null && +q.get('diff') >= 0 && +q.get('diff') < DIFFS.length) G.diff = +q.get('diff');

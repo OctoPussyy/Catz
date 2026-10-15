@@ -4,15 +4,17 @@ A 2D fighting game that plays inside the Catz arcade cabinet. Open `index.html` 
 
 - `index.html` – the cabinet page (CRT glass is warped onto the machine's keystoned screen; joysticks, buttons and coin slots are clickable)
 - `js/game.js` – fighters, moves, hit detection, CPU AI, rounds, HUD, all screens
-- `js/rig.js`, `js/poses.js` – paper-doll skeleton (2-bone IK) and the pose/move table
+- `js/rig.js`, `js/poses.js` – paper-doll skeleton (2-bone IK, separate head and fists) and the pose/move table
 - `js/stage.js` – procedural neon stages; `js/audio.js` – synthesized sfx + music; `js/input.js` – keyboard/gamepad/touch
-- `assets/raw/*.png` – the 5 supplied pieces (torso, 2 arms, 2 legs)
-- `tools/build_parts.py` – slices those pieces at elbows/knees/ankles into `assets/parts/*` and writes `js/parts.js`
+- `assets/chars/<id>/` + `js/chars/<id>.js` – a rigged character (generated)
+- `tools/build_char.py` – turns a folder of 14 overlapping piece PNGs into a character (finds the joint pivots from the overlaps)
+- `js/config.js` – `comingSoon` switch (open the page with `?dev=1` to bypass it)
 
 ## Adding a character
-Every roster slot currently reuses one sprite set, hue-shifted (`ROSTER` in `js/game.js`).
-To give a character its own art, drop its 5 pieces (same 1024x1536 canvas, assembled position) in `assets/raw/`,
-adjust joint positions in `tools/build_parts.py`, and point that roster entry at its own parts set.
+1. Cut the character into 14 transparent PNGs on one canvas, all in the assembled standing pose, with overlapping joints:
+   Torso, Head, Left/Right upper arm, fore arm, hand, thigh, shin, boot (see docs/character-guide.md).
+2. `python3 tools/build_char.py "<folder>" <id>` (add `--print` to only list the detected pivots). Check `assets/chars/<id>/_check.png`.
+3. Add `<script src="js/chars/<id>.js">` to `index.html` and point a `ROSTER` entry in `js/game.js` at it with `char: '<id>'`.
 
 ## Controls
 P1: WASD move, J/K punch, L block, U/I kick, O special. P2: arrows + numpad 4 5 6 / 1 2 3. Z view, M mute, P pause, F2 hitboxes.
