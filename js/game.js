@@ -18,8 +18,9 @@
   const ROSTER = [
     { name: 'PRISON CAT', char: 'prison', hue: 0 },
     { name: 'CRIMSON PAW', char: 'crimson_paw', hue: 0 },
+    { name: 'PIMP DADDY', char: 'pimp_daddy', hue: 0 },
     { name: '???', locked: true }, { name: '???', locked: true }, { name: '???', locked: true },
-    { name: '???', locked: true }, { name: '???', locked: true },
+    { name: '???', locked: true },
   ];
   const playable = () => ROSTER.map((r, i) => i).filter(i => !ROSTER[i].locked);
   const randCh = () => { const p = playable(); return p[(Math.random() * p.length) | 0]; };
@@ -652,6 +653,10 @@
     if (o.skew) ctx.transform(1, 0, -o.skew, 1, 0, 0);
     if (o.sx) ctx.scale(o.sx, o.sy || o.sx);
     ctx.font = `${o.weight || ''} ${size}px ${o.font || FONT_PIX}`.trim();
+    if (o.maxW) {                                     // shrink text that would be wider than maxW so it always fits
+      const w = ctx.measureText(s).width + (o.stroke ? (o.sw || 6) : 0);
+      if (w > o.maxW) { size = Math.max(8, Math.floor(size * o.maxW / w)); ctx.font = `${o.weight || ''} ${size}px ${o.font || FONT_PIX}`.trim(); }
+    }
     ctx.textAlign = o.align || 'left'; ctx.textBaseline = o.base || 'alphabetic';
     ctx.lineJoin = 'round';
     if (o.glow) { ctx.shadowColor = o.glow; ctx.shadowBlur = o.blur || 16; }
@@ -774,8 +779,8 @@
     T('VS', 480, 104, 70, { font: FONT_TITLE, align: 'center', skew: 0.25, fill: ['#ffe14a', '#ff7a1a', '#ff2d6a'], stroke: '#2a0030', sw: 10, glow: '#ff5a1f', blur: 14 });
     const sec = Math.max(0, Math.ceil(F.timer / 60));
     if (!F.demo) T(String(sec).padStart(2, '0'), 480, 168, 46, { align: 'center', fill: sec <= 10 ? '#ff5a5a' : '#fff', stroke: '#000', sw: 9 });
-    T(a.name, x1, 150, 28, { fill: '#fff', stroke: '#000', sw: 7 });
-    T(b.name, W - 48, 150, 28, { fill: '#fff', stroke: '#000', sw: 7, align: 'right' });
+    T(a.name, x1, 150, 28, { fill: '#fff', stroke: '#000', sw: 7, maxW: 290 });          // stops short of the round markers
+    T(b.name, W - 48, 150, 28, { fill: '#fff', stroke: '#000', sw: 7, align: 'right', maxW: 290 });
     // round pips
     for (let i = 0; i < 2; i++) {
       for (const [f, px, dir] of [[a, x1 + bw - 12, -1], [b, x2 + 12, 1]]) {
@@ -862,7 +867,7 @@
       const pose = G.sel[i].locked ? Poses.lerp(Poses.idle(G.frame), Poses.make({ tr: 10, py: 80, hrx: 300, hry: 100 }), 0.4 + 0.3 * Math.sin(G.frame * 0.3)) : Poses.idle(G.frame + i * 30);
       ctx.save(); ctx.globalAlpha = 0.5; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(x, 726, 140, 20, 0, 0, 7); ctx.fill(); ctx.restore();
       Rig.draw(ctx, spr, pose, x, 722, face, 0.38);
-      T(ch.name, x, 770 - 8, 36, { align: 'center', fill: '#fff', stroke: '#000', sw: 7, glow: i ? '#2de2e6' : '#ff8a1a' });
+      T(ch.name, x, 770 - 8, 36, { maxW: 400, align: 'center', fill: '#fff', stroke: '#000', sw: 7, glow: i ? '#2de2e6' : '#ff8a1a' });
     }
     // roster strip
     const cw = 112, gap = 8, x0 = (W - (ROSTER.length * (cw + gap) - gap)) / 2, y0 = 770, ch = 128;
@@ -921,7 +926,7 @@
       else portrait(spr, x, y, w, h);
       ctx.restore();
       ctx.strokeStyle = i ? '#2de2e6' : '#ff8a1a'; ctx.lineWidth = 6; ctx.strokeRect(x, y, w, h);
-      T(ch.name, x + (i ? w : 0), y + h + 64, 44, { align: i ? 'right' : 'left', fill: '#fff', stroke: '#000', sw: 9, glow: i ? '#2de2e6' : '#ff8a1a' });
+      T(ch.name, x + (i ? w : 0), y + h + 64, 44, { maxW: 400, align: i ? 'right' : 'left', fill: '#fff', stroke: '#000', sw: 9, glow: i ? '#2de2e6' : '#ff8a1a' });
       T(i ? (G.mode === 1 ? 'CPU' : 'PLAYER 2') : 'PLAYER 1', x + (i ? w : 0), y - 18, 26, { align: i ? 'right' : 'left', fill: i ? '#7fe9ff' : '#ffd45a', stroke: '#000', sw: 5 });
     }
     T('VS', 480, 560, 190, { font: FONT_TITLE, align: 'center', skew: 0.25, sx: 1 + (1 - e) * 2, fill: ['#fff', '#ffd23d', '#ff3d2d'], stroke: '#26002e', sw: 22, glow: '#ff5a1f', blur: 36 });
@@ -937,7 +942,7 @@
     const title = G.mode === 1 ? (humanWon ? 'VICTORY!' : 'GAME OVER') : (F.f[0].wins >= 2 ? 'PLAYER 1 WINS' : 'PLAYER 2 WINS');
     T(title, 480, 400, 84, { font: FONT_TITLE, align: 'center', skew: 0.2, fill: humanWon === false ? ['#fff', '#ff6a6a', '#9b0000'] : ['#fff', '#ffd23d', '#ff7a1a'], stroke: '#26002e', sw: 16, glow: '#ff2bd6' });
     const winner = F.f[F.f[0].wins >= 2 ? 0 : 1];
-    T(winner.name, 480, 490, 40, { align: 'center', fill: '#fff', stroke: '#000', sw: 8 });
+    T(winner.name, 480, 490, 40, { maxW: 700, align: 'center', fill: '#fff', stroke: '#000', sw: 8 });
     if (G.resT > 40 && ((G.frame >> 5) & 1)) T(G.mode === 1 && humanWon ? 'START: NEXT FIGHT' : 'PRESS START', 480, 640, 32, { align: 'center', fill: '#fff', stroke: '#000', sw: 7, glow: '#ff2bd6' });
   }
 
