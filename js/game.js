@@ -535,7 +535,14 @@
   }
   addEventListener('message', e => {
     const d = e.data;
-    if (e.source !== window.parent || !d || d.type !== 'catz:init') return;
+    if (e.source !== window.parent || !d) return;
+    if (d.type === 'catz:reward') {                    // the website tells us what it actually awarded for a finished match
+      if (Host.token && e.origin !== Host.origin && Host.origin !== '*') return;
+      const F = G.fight;
+      if (F && d.matchId === F.id) F.reward = { state: d.granted > 0 ? 'granted' : (d.capped ? 'capped' : 'none'), amount: Math.max(0, Math.min(1000, +d.granted || 0)), t: Date.now() };
+      return;
+    }
+    if (d.type !== 'catz:init') return;
     Host.token = String(d.token || '').slice(0, 256);
     Host.origin = e.origin && e.origin !== 'null' ? e.origin : '*';        // from now on only talk to the embedding site
     emit('catz:ready', { difficulties: DIFFS.map(x => x.name), difficulty: diffNow().name });
@@ -555,6 +562,7 @@
       result: G.mode === 1 ? (w === 0 ? 'win' : 'loss') : 'p' + (w + 1) + '_win', rounds: F.log, roundsWon: [F.f[0].wins, F.f[1].wins],
       durationMs: dur, score: matchScore(F), eligible: G.mode === 1 && dur >= 20000,
     });
+    if (Host.token && G.mode === 1 && w === 0) F.reward = { state: 'pending', amount: 0, t: Date.now() };   // wait for the website's answer
   }
   function abandonIfPlaying() {
     const F = G.fight;
@@ -943,7 +951,14 @@
     T(title, 480, 400, 84, { font: FONT_TITLE, align: 'center', skew: 0.2, fill: humanWon === false ? ['#fff', '#ff6a6a', '#9b0000'] : ['#fff', '#ffd23d', '#ff7a1a'], stroke: '#26002e', sw: 16, glow: '#ff2bd6' });
     const winner = F.f[F.f[0].wins >= 2 ? 0 : 1];
     T(winner.name, 480, 490, 40, { maxW: 700, align: 'center', fill: '#fff', stroke: '#000', sw: 8 });
-    if (G.resT > 40 && ((G.frame >> 5) & 1)) T(G.mode === 1 && humanWon ? 'START: NEXT FIGHT' : 'PRESS START', 480, 640, 32, { align: 'center', fill: '#fff', stroke: '#000', sw: 7, glow: '#ff2bd6' });
+    const R = F.reward;                                   // only shown when the game is embedded on the website and the player won
+    if (R) {
+      const late = Date.now() - R.t > 7000;
+      if (R.state === 'granted') T('+' + R.amount + ' REP', 480, 575, 56, { font: FONT_TITLE, align: 'center', skew: 0.2, fill: ['#fff', '#7dff9a', '#18b86a'], stroke: '#02200f', sw: 12, glow: '#2dff8a' });
+      else if (R.state === 'capped') T('DAILY REP LIMIT REACHED', 480, 570, 24, { align: 'center', fill: '#ffd45a', stroke: '#000', sw: 7 });
+      else if (R.state === 'pending') T(late ? 'REP WILL APPEAR SHORTLY' : 'CHECKING REP...', 480, 570, 24, { align: 'center', fill: '#c9b6ff', stroke: '#000', sw: 7 });
+    }
+    if (G.resT > 40 && ((G.frame >> 5) & 1)) T(G.mode === 1 && humanWon ? 'START: NEXT FIGHT' : 'PRESS START', 480, 680, 32, { align: 'center', fill: '#fff', stroke: '#000', sw: 7, glow: '#ff2bd6' });
   }
 
   function drawSoon() {

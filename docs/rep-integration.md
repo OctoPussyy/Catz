@@ -44,3 +44,29 @@ reported win without server-side checks. Sensible defaults:
 - reject `eligible: false`, very short matches, and anything above a daily cap per user;
 - give small fixed rep for participation (e.g. finishing a match) and bigger rep only for things you can bound (wins on Hard, capped per day);
 - if a leaderboard becomes competitive, cheating can only be prevented by running the match logic on a server.
+
+## 4. Rep rules agreed for launch
+| Level | Rep per win |
+|---|---|
+| EASY | 3 |
+| NORMAL | 5 |
+| HARD | 10 |
+
+Only a single-player **win** earns rep. A hard cap of **30 rep per user per UTC day** applies across all of it. The amounts and the cap live
+on the server only; the game never decides them.
+
+## 5. Telling the player (the website answers the game)
+After it forwards `catz:match_end` to its backend, the website posts the outcome back into the iframe:
+```js
+frame.contentWindow.postMessage({ type: 'catz:reward', matchId: m.matchId, granted: 5 /* 0 if none */, capped: false /* true if the daily cap stopped it */ }, GAME_ORIGIN);
+```
+The victory screen then shows `+5 REP`, `DAILY REP LIMIT REACHED`, or nothing. Until the answer arrives it shows `CHECKING REP...`.
+The game only shows rep when it is embedded and the handshake (section 1) happened, so a standalone copy never claims rep.
+
+## 6. What the backend must check before it awards rep
+1. The user is signed in, and `matchId` is new (unique constraint) and was announced by `catz:match_start` for the same user.
+2. Measure duration yourself from the server times of match_start and match_end. Ignore `durationMs`.
+3. `mode === 1`, `result === 'win'`, and duration is realistic (suggest at least 30 s).
+4. Award `min(rep for the level, 30 - rep already earned today)` in one atomic database update; if 0 is left, send `capped: true`.
+5. Take the level from the match_start you recorded, not from match_end.
+6. Allow one active match per user and rate-limit match starts.
