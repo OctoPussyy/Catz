@@ -102,7 +102,7 @@ def joints(P):
     # it is drawn behind the torso so the chest covers its root
     J['under_torso'] = [s for s in 'lr' if area[s] < 0.6 * area['l' if s == 'r' else 'r']]
     hl, hr = J['leg_l']['H'], J['leg_r']['H']
-    J['hip_pivot'] = ((hl[0] + hr[0]) / 2, 730.0)
+    J['hip_pivot'] = ((hl[0] + hr[0]) / 2, (hl[1] + hr[1]) / 2)       # the torso tilts about the midpoint of the two hips
     J['ground_y'] = max(J['leg_l']['bottom'], J['leg_r']['bottom'])
     J['center_x'] = 540
     return J

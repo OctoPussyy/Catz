@@ -14,11 +14,18 @@
   for (const k in MV) { const m = MV[k]; if (m.box) for (const q in m.box) m.box[q] *= K; if (m.adv) m.adv *= K; }
 
   // Placeholder roster: every fighter shares the one sprite set, tinted. Swap names/sprites later.
+  // Real fighters have a `char` (a rigged set in js/chars/). Slots without one are shown as locked and cannot be picked.
   const ROSTER = [
-    { name: 'CRIMSON', char: 'prison', hue: 0 }, { name: 'EMBER', char: 'prison', hue: 50 }, { name: 'VIPER', char: 'prison', hue: 120 },
-    { name: 'FROST', char: 'prison', hue: 190 }, { name: 'ORCHID', char: 'prison', hue: 250 }, { name: 'HEX', char: 'prison', hue: 300 },
-    { name: 'NEON', char: 'prison', hue: 330 },
+    { name: 'PRISON CAT', char: 'prison', hue: 0 },
+    { name: 'CRIMSON PAW', char: 'crimson_paw', hue: 0 },
+    { name: '???', locked: true }, { name: '???', locked: true }, { name: '???', locked: true },
+    { name: '???', locked: true }, { name: '???', locked: true },
   ];
+  const playable = () => ROSTER.map((r, i) => i).filter(i => !ROSTER[i].locked);
+  const randCh = () => { const p = playable(); return p[(Math.random() * p.length) | 0]; };
+  // a different fighter than `ex`: a character never fights itself
+  const pickOther = ex => { const c = playable().filter(i => i !== ex); return c.length ? c[(Math.random() * c.length) | 0] : ex; };
+  const stepSel = (i, dir) => { let n = i; for (let k = 0; k < ROSTER.length; k++) { n = (n + dir + ROSTER.length) % ROSTER.length; if (!ROSTER[n].locked) return n; } return i; };
 
   const cv = document.getElementById('screen');
   const ctx = cv.getContext('2d');
@@ -506,13 +513,12 @@
   }
 
   function finishMatch(F) {
-    if (F.demo) { newMatch(randCh(), randCh(), { ai1: 1, ai2: 1, demo: 1, skill1: 0.6, skill2: 0.6 }); return; }
+    if (F.demo) { const a = randCh(); newMatch(a, pickOther(a), { ai1: 1, ai2: 1, demo: 1, skill1: 0.6, skill2: 0.6 }); return; }
     F.over = true;
     reportMatchEnd(F);
     G.screen = 'result'; G.resT = 0;
     Sound.setMode('menu');
   }
-  const randCh = () => (Math.random() * ROSTER.length) | 0;
 
   // ============================================================================================================
   //  host integration: the game announces what happens so the page that embeds it can award rep / track players.
@@ -561,15 +567,17 @@
   function startAttract() {
     abandonIfPlaying();
     G.screen = 'attract'; G.stageIdx = (Math.random() * 3) | 0; Sound.setMode('menu');
-    newMatch(randCh(), randCh(), { ai1: 1, ai2: 1, demo: 1, skill1: 0.55, skill2: 0.55 });
+    const a = randCh();
+    newMatch(a, pickOther(a), { ai1: 1, ai2: 1, demo: 1, skill1: 0.55, skill2: 0.55 });
   }
   function startSelect(mode) {
     G.mode = mode; G.screen = 'select'; G.selT = 0; G.ladder = 1;
-    G.sel = [{ i: 0, locked: false, shuffle: 0 }, { i: 3, locked: false, shuffle: 0 }]; G.selDone = 0;
+    G.sel = [{ i: 0, locked: false, shuffle: 0, deny: 0 }, { i: 1, locked: false, shuffle: 0, deny: 0 }]; G.selDone = 0;
     G.menuPrev = [blankCtl(), blankCtl()];
     Sound.play('coin'); Sound.setMode('menu');
   }
   function startVS(c1, c2) {
+    if (c1 === c2) c2 = pickOther(c1);
     G.screen = 'vs'; G.vsT = 0; G.vs = [c1, c2];
     G.stageIdx = (Math.random() * 3) | 0;
     Sound.play('select');
@@ -595,14 +603,16 @@
     G.selT++;
     for (let i = 0; i < 2; i++) {
       const s = G.sel[i];
+      if (s.deny > 0) s.deny--;
       let e = menuEdges(i);
       if (G.mode === 1 && i === 0) { const e2 = menuEdges(1); for (const k in e2) e[k] = e[k] || e2[k]; }
       if (G.mode === 1 && i === 1) {
+        if (!G.sel[0].locked && s.i === G.sel[0].i) s.i = pickOther(G.sel[0].i);     // the CPU preview always shows a different fighter
         // CPU picks after P1 locks in: a quick cursor shuffle, then lands on a random fighter
         if (G.sel[0].locked && !s.locked) {
           s.shuffle++;
-          if (s.shuffle % 4 === 0) { s.i = (s.i + 1) % ROSTER.length; Sound.play('blip'); }
-          if (s.shuffle > 36) { s.locked = true; s.i = randCh(); Sound.play('select'); }
+          if (s.shuffle % 4 === 0) { s.i = stepSel(s.i, 1); Sound.play('blip'); }
+          if (s.shuffle > 36) { s.locked = true; s.i = pickOther(G.sel[0].i); Sound.play('select'); }   // never the same fighter as P1
         }
         continue;
       }
@@ -611,9 +621,13 @@
         G.diff = clamp(G.diff + (e.u ? 1 : -1), 0, DIFFS.length - 1); Sound.play('blip');
         try { localStorage.setItem('catz-diff', String(G.diff)); } catch (err) { /* ignore */ }
       }
-      if (e.l) { s.i = (s.i + ROSTER.length - 1) % ROSTER.length; Sound.play('blip'); }
-      if (e.r) { s.i = (s.i + 1) % ROSTER.length; Sound.play('blip'); }
-      if (e.lp || e.hp || e.lk || e.hk || e.sp) { s.locked = true; Sound.play('select'); }
+      if (e.l) { s.i = stepSel(s.i, -1); Sound.play('blip'); }
+      if (e.r) { s.i = stepSel(s.i, 1); Sound.play('blip'); }
+      if (e.lp || e.hp || e.lk || e.hk || e.sp) {
+        const other = G.sel[1 - i];
+        if (other.locked && other.i === s.i) { s.deny = 45; Sound.play('block'); }       // already taken by the other player
+        else { s.locked = true; Sound.play('select'); }
+      }
     }
     if (G.sel[0].locked && G.sel[1].locked && !G.selDone) { G.selDone = G.selT; }
     if (G.selDone && G.selT - G.selDone > 40) { G.selDone = 0; startVS(G.sel[0].i, G.sel[1].i); }
@@ -854,9 +868,12 @@
     const cw = 112, gap = 8, x0 = (W - (ROSTER.length * (cw + gap) - gap)) / 2, y0 = 770, ch = 128;
     ROSTER.forEach((r, i) => {
       const x = x0 + i * (cw + gap);
-      ctx.fillStyle = '#10051c'; ctx.fillRect(x, y0, cw, ch);
-      const spr = Rig.sprites(r.char, r.hue); portrait(spr, x + 3, y0 + 3, cw - 6, ch - 6);
-      ctx.strokeStyle = '#8a5cff'; ctx.lineWidth = 3; ctx.strokeRect(x, y0, cw, ch);
+      ctx.fillStyle = r.locked ? '#0b0514' : '#10051c'; ctx.fillRect(x, y0, cw, ch);
+      if (r.locked) {
+        T('?', x + cw / 2, y0 + 78, 60, { align: 'center', fill: '#2c1f48', stroke: '#000', sw: 6 });
+        T('SOON', x + cw / 2, y0 + ch - 14, 16, { align: 'center', fill: '#5a4a80', stroke: '#000', sw: 4 });
+      } else { const spr = Rig.sprites(r.char, r.hue); portrait(spr, x + 3, y0 + 3, cw - 6, ch - 6); }
+      ctx.strokeStyle = r.locked ? '#3b2a66' : '#8a5cff'; ctx.lineWidth = 3; ctx.strokeRect(x, y0, cw, ch);
     });
     // cursors
     for (let i = 0; i < 2; i++) {
@@ -865,6 +882,7 @@
       ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = s.locked ? 7 : 5; ctx.shadowColor = col; ctx.shadowBlur = 18 * pulse;
       const o = i ? 5 : 0;
       ctx.strokeRect(x - 3 + o, y0 - 3 + o, cw + 6 - o * 2, ch + 6 - o * 2); ctx.restore();
+      if (s.deny > 0 && (G.frame >> 2) & 1) T('TAKEN', x + cw / 2, y0 + 70, 20, { align: 'center', fill: '#ff5a5a', stroke: '#000', sw: 6 });
       T(i ? '2P' : '1P', x + (i ? cw - 8 : 8), y0 + ch - 10, 22, { align: i ? 'right' : 'left', fill: col, stroke: '#000', sw: 4 });
     }
     if (G.mode === 1) {                                             // CPU level, shown between the two fighters
@@ -1003,7 +1021,7 @@
     const F = G.fight;
     if (G.mode === 1 && F.f[0].wins >= 2) {
       G.ladder++;
-      const c2 = (() => { let c; do { c = randCh(); } while (c === F.f[0].ch && ROSTER.length > 1 && Math.random() < 0.7); return c; })();
+      const c2 = pickOther(F.f[0].ch);
       startVS(F.f[0].ch, c2);
     } else startAttract();
   }
@@ -1030,7 +1048,7 @@
   requestAnimationFrame(loop);
   G.bootMsg = 'LOADING...';
   Promise.all([Rig.load(), fontsReady()]).then(() => {
-    for (const r of ROSTER) Rig.sprites(r.char, r.hue);
+    for (const r of ROSTER) if (!r.locked) Rig.sprites(r.char, r.hue);
     const q = new URLSearchParams(location.search), go = q.get('go');
     try { const v = parseInt(localStorage.getItem('catz-diff'), 10); if (v >= 0 && v < DIFFS.length) G.diff = v; } catch (e) { /* ignore */ }
     if (q.get('diff') !== null && +q.get('diff') >= 0 && +q.get('diff') < DIFFS.length) G.diff = +q.get('diff');
@@ -1040,7 +1058,7 @@
     if (go === 'select') startSelect(+q.get('mode') || 1);
     if (go === 'fight' || go === 'vs') {
       G.mode = +q.get('mode') || 1; G.ladder = +q.get('ladder') || 1;
-      startVS(+q.get('p1') || 0, q.get('p2') !== null ? +q.get('p2') : 3);
+      startVS(+q.get('p1') || 0, q.get('p2') !== null ? +q.get('p2') : 1);
       if (go === 'fight') startFightFromVS();
     }
     document.body.classList.add('ready');

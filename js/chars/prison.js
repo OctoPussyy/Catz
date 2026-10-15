@@ -179,7 +179,7 @@ CHARS["prison"] = {
   ],
   "hip_pivot": [
    542.3,
-   730.0
+   729.5
   ],
   "ground_y": 1521,
   "center_x": 540

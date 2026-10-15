@@ -1,12 +1,12 @@
 <!doctype html><meta charset="utf-8"><base href="../"><body style="margin:0;background:#1a0a2e">
 <canvas id="c" width="2000" height="1250"></canvas>
-<script src="js/chars/prison.js"></script><script src="js/rig.js"></script><script src="js/poses.js"></script>
+<script src="js/chars/prison.js"></script><script src="js/chars/crimson_paw.js"></script><script src="js/rig.js"></script><script src="js/poses.js"></script>
 <script>
 (async()=>{
  await Rig.load();
  const _q=new URLSearchParams(location.search); if(_q.get('arm')==='lo')Rig.opts.armUpperOnTop=false; if(_q.get('hide'))Rig.opts.hide=_q.get('hide').split(','); if(_q.get('leg')==='sh')Rig.opts.legThighOnTop=false;
  const c=document.getElementById('c'),x=c.getContext('2d');
- const spr=Rig.sprites('prison',0), M=Poses.Moves, P=Poses.poses;
+ const spr=Rig.sprites(new URLSearchParams(location.search).get('char')||'prison',0), M=Poses.Moves, P=Poses.poses;
  const list=[
   ['stand',P.stand],['crouch',P.crouch],['blockS',P.blockS],['blockC',P.blockC],['walkF',Poses.walk(0.8,1)],['jumpUp',P.jumpUp],
   ['hitHigh',P.hitHigh],['hitLow',P.hitLow],['win',P.win],['LP',Poses.sample(M.LP.kf,6)],['HP',Poses.sample(M.HP.kf,12)],['LK',Poses.sample(M.LK.kf,9)],
