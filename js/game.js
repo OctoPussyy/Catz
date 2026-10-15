@@ -1049,7 +1049,7 @@
   function afterResult() { G.cta = null; startSelect(G.mode); }
 
   // tapping the screen (touch / mouse) acts as START on the menus
-  const CONNECT_X_URL = 'https://catzindahood.xyz/initiate';
+  const CONNECT_X_URL = 'https://catzindahood.xyz/get-initiated';
   function screenTap(e) {
     if (G.soon) return;
     Sound.init();
