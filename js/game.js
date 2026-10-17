@@ -536,6 +536,14 @@
   addEventListener('message', e => {
     const d = e.data;
     if (e.source !== window.parent || !d) return;
+    if (d.type === 'catz:leaderboard') {                // top fighters, supplied by the website (the game never talks to a server)
+      if (Host.token && e.origin !== Host.origin && Host.origin !== '*') return;
+      const rows = Array.isArray(d.rows) ? d.rows.slice(0, 10).map((r, i) => ({
+        rank: Math.max(1, Math.min(9999, +r.rank || i + 1)), name: String(r.name == null ? 'ANONYMOUS' : r.name).slice(0, 18).toUpperCase(),
+        wins: Math.max(0, Math.min(999999, +r.wins || 0)), rep: Math.max(0, Math.min(999999, +r.rep || 0)), me: r.me === true })) : [];
+      G.lb = { rows, scroll: G.lb ? Math.min(G.lb.scroll, Math.max(0, rows.length * LB_ROW - LB_VIEW)) : 0, t: Date.now() };
+      return;
+    }
     if (d.type === 'catz:reward') {                    // the website tells us what it actually awarded for a finished match
       if (Host.token && e.origin !== Host.origin && Host.origin !== '*') return;
       const F = G.fight;
@@ -543,9 +551,12 @@
       return;
     }
     if (d.type !== 'catz:init') return;
-    Host.token = String(d.token || '').slice(0, 256);
-    Host.origin = e.origin && e.origin !== 'null' ? e.origin : '*';        // from now on only talk to the embedding site
-    emit('catz:ready', { difficulties: DIFFS.map(x => x.name), difficulty: diffNow().name });
+    const token = String(d.token || '').slice(0, 256), origin = e.origin && e.origin !== 'null' ? e.origin : '*';
+    const changed = token !== Host.token || origin !== Host.origin;
+    Host.token = token;
+    Host.origin = origin;                                                    // from now on only talk to the embedding site
+    // Answer once per distinct init. A host that replies to every `catz:ready` with an init would otherwise ping-pong forever.
+    if (changed) emit('catz:ready', { difficulties: DIFFS.map(x => x.name), difficulty: diffNow().name });
   });
   function matchScore(F) {
     if (G.mode !== 1 || F.f[0].wins < 2) return 0;
@@ -837,17 +848,69 @@
   }
 
   // ---- screens ----------------------------------------------------------------------------------------------------
+  const LB_ROW = 60, LB_VIEW = 240, LB_BOX = { x: 120, y: 392, w: 720, h: 336 };
+  const lbShown = () => !!G.lb;                                   // only once the website has sent rankings
+  function lbScroll(dy) { if (!G.lb) return; G.lb.scroll = Math.max(0, Math.min(Math.max(0, G.lb.rows.length * LB_ROW - LB_VIEW), G.lb.scroll + dy)); }
+  function lbHit(e) {
+    if (G.screen !== 'attract' || !lbShown() || !e || typeof e.offsetX !== 'number') return false;
+    return e.offsetX >= LB_BOX.x && e.offsetX <= LB_BOX.x + LB_BOX.w && e.offsetY >= LB_BOX.y && e.offsetY <= LB_BOX.y + LB_BOX.h;
+  }
+  function drawBoard() {
+    const B = LB_BOX, rows = G.lb ? G.lb.rows : null, y0 = B.y + 84;
+    ctx.fillStyle = 'rgba(6,0,16,0.8)'; rr(B.x, B.y, B.w, B.h, 18); ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = '#ff4fd8'; ctx.stroke();
+    T('TOP FIGHTERS', B.x + 24, B.y + 44, 28, { fill: '#ffd45a', stroke: '#000', sw: 7 });
+    T('MOST WINS', B.x + B.w - 24, B.y + 40, 16, { align: 'right', fill: '#7fe9ff', stroke: '#000', sw: 5 });
+    T('RANK', B.x + 24, y0 - 10, 16, { fill: '#c9b6ff', stroke: '#000', sw: 5 });
+    T('PLAYER', B.x + 150, y0 - 10, 16, { fill: '#c9b6ff', stroke: '#000', sw: 5 });
+    T('WINS', B.x + 560, y0 - 10, 16, { align: 'right', fill: '#c9b6ff', stroke: '#000', sw: 5 });
+    T('REP', B.x + B.w - 44, y0 - 10, 16, { align: 'right', fill: '#c9b6ff', stroke: '#000', sw: 5 });
+    if (!rows || !rows.length) {
+      T('NO RANKINGS YET', 480, y0 + 90, 26, { align: 'center', fill: '#fff', stroke: '#000', sw: 7 });
+      T('WIN A MATCH TO BE FIRST', 480, y0 + 136, 18, { align: 'center', fill: '#c9b6ff', stroke: '#000', sw: 6 });
+      return;
+    }
+    ctx.save(); ctx.beginPath(); ctx.rect(B.x + 6, y0, B.w - 12, LB_VIEW); ctx.clip();
+    rows.forEach((r, i) => {
+      const y = y0 + i * LB_ROW - G.lb.scroll;
+      if (y + LB_ROW < y0 || y > y0 + LB_VIEW) return;
+      ctx.fillStyle = r.me ? 'rgba(255,225,74,0.22)' : (i % 2 ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.0)'); ctx.fillRect(B.x + 14, y + 4, B.w - 50, LB_ROW - 8);
+      const medal = ['#ffd23d', '#d6dbe8', '#e0894a'][r.rank - 1] || '#fff';
+      const cy = y + LB_ROW / 2 + 10;
+      T('#' + r.rank, B.x + 24, cy, 28, { fill: medal, stroke: '#000', sw: 7 });
+      T(r.name + (r.me ? ' (YOU)' : ''), B.x + 150, cy, 26, { maxW: 330, fill: r.me ? '#ffe14a' : '#fff', stroke: '#000', sw: 7 });
+      T(String(r.wins), B.x + 560, cy, 26, { align: 'right', fill: '#7fe9ff', stroke: '#000', sw: 7 });
+      T(String(r.rep), B.x + B.w - 44, cy, 26, { align: 'right', fill: '#7dff9a', stroke: '#000', sw: 7 });
+    });
+    ctx.restore();
+    const total = rows.length * LB_ROW, max = Math.max(0, total - LB_VIEW);
+    if (max > 0) {                                           // scrollbar + hint
+      const th = Math.max(36, LB_VIEW * LB_VIEW / total), ty = y0 + (LB_VIEW - th) * (G.lb.scroll / max);
+      ctx.fillStyle = 'rgba(255,255,255,0.15)'; rr(B.x + B.w - 24, y0, 9, LB_VIEW, 4); ctx.fill();
+      ctx.fillStyle = '#ff4fd8'; rr(B.x + B.w - 24, ty, 9, th, 4); ctx.fill();
+      if (G.lb.scroll < max - 2) T('▼ SCROLL FOR MORE', B.x + B.w / 2, B.y + B.h - 6, 14, { align: 'center', fill: '#c9b6ff', stroke: '#000', sw: 5 });
+    }
+  }
+
   function drawAttract() {
     const F = G.fight;
     drawWorld(F, 0.35);
     const t = G.frame;
-    Stage.panther(ctx, 480, 255, 150, '#d6ff2a', '#c8ff00', 3.2);
-    T('CATZ', 480, 475, 130, { font: FONT_TITLE, align: 'center', skew: 0.2, fill: ['#ffd23d', '#ff7a1a', '#ff2d8a'], stroke: '#1d0030', sw: 18, glow: '#ff2bd6', blur: 28 });
-    T('FIGHT', 480, 590, 130, { font: FONT_TITLE, align: 'center', skew: 0.2, fill: ['#ff3d9a', '#c21cff', '#4d4dff'], stroke: '#1d0030', sw: 18, glow: '#7a2bff', blur: 28 });
-    ctx.fillStyle = 'rgba(6,0,16,0.72)'; rr(110, 700, 740, 170, 18); ctx.fill();
-    if ((t >> 5) & 1) T('PRESS START', 480, 774, 44, { align: 'center', fill: '#fff', stroke: '#000', sw: 10, glow: '#ff2bd6' });
-    T('ENTER / TAP: 1 PLAYER', 480, 826, 22, { align: 'center', fill: '#ffd45a', stroke: '#000', sw: 6 });
-    T('KEY 2: 2 PLAYERS', 480, 858, 22, { align: 'center', fill: '#ffd45a', stroke: '#000', sw: 6 });
+    const lb = lbShown(), dy = lb ? 48 : 0;
+    if (lb) {
+      Stage.panther(ctx, 480, 125, 120, '#d6ff2a', '#c8ff00', 3);
+      T('CATZ', 480, 272, 100, { font: FONT_TITLE, align: 'center', skew: 0.2, fill: ['#ffd23d', '#ff7a1a', '#ff2d8a'], stroke: '#1d0030', sw: 14, glow: '#ff2bd6', blur: 24 });
+      T('FIGHT', 480, 372, 100, { font: FONT_TITLE, align: 'center', skew: 0.2, fill: ['#ff3d9a', '#c21cff', '#4d4dff'], stroke: '#1d0030', sw: 14, glow: '#7a2bff', blur: 24 });
+      drawBoard();
+    } else {
+      Stage.panther(ctx, 480, 255, 150, '#d6ff2a', '#c8ff00', 3.2);
+      T('CATZ', 480, 475, 130, { font: FONT_TITLE, align: 'center', skew: 0.2, fill: ['#ffd23d', '#ff7a1a', '#ff2d8a'], stroke: '#1d0030', sw: 18, glow: '#ff2bd6', blur: 28 });
+      T('FIGHT', 480, 590, 130, { font: FONT_TITLE, align: 'center', skew: 0.2, fill: ['#ff3d9a', '#c21cff', '#4d4dff'], stroke: '#1d0030', sw: 18, glow: '#7a2bff', blur: 28 });
+    }
+    ctx.fillStyle = 'rgba(6,0,16,0.72)'; rr(110, 700 + dy, 740, 170, 18); ctx.fill();
+    if ((t >> 5) & 1) T('PRESS START', 480, 774 + dy, 44, { align: 'center', fill: '#fff', stroke: '#000', sw: 10, glow: '#ff2bd6' });
+    T('ENTER / TAP: 1 PLAYER', 480, 826 + dy, 22, { align: 'center', fill: '#ffd45a', stroke: '#000', sw: 6 });
+    T('KEY 2: 2 PLAYERS', 480, 858 + dy, 22, { align: 'center', fill: '#ffd45a', stroke: '#000', sw: 6 });
     T('FREE PLAY', 480, 952, 24, { align: 'center', fill: '#7fe9ff', stroke: '#000', sw: 7 });
   }
 
@@ -1067,7 +1130,7 @@
   // ============================================================================================================
   //  boot
   // ============================================================================================================
-  window.CATZ = { G, ROSTER, DIFFS, startOne, startTwo, startAttract, startVS, startFightFromVS, screenTap, newMatch, fighters: () => G.fight && G.fight.f, Poses, Rig };
+  window.CATZ = { G, ROSTER, DIFFS, lbHit, lbScroll, startOne, startTwo, startAttract, startVS, startFightFromVS, screenTap, newMatch, fighters: () => G.fight && G.fight.f, Poses, Rig };
 
   function fontsReady() {
     if (!document.fonts || !document.fonts.load) return Promise.resolve();

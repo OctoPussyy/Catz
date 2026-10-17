@@ -82,7 +82,26 @@
   });
 
   // tapping the screen starts the game / continues
-  document.getElementById('scr').addEventListener('pointerdown', e => { Sound.init(); if (window.CATZ) CATZ.screenTap(e); });
+  // On the title screen the leaderboard panel scrolls by wheel or drag (a drag must not start the game); a tap anywhere else starts it.
+  const scr = document.getElementById('scr');
+  let drag = null;
+  scr.addEventListener('pointerdown', e => {
+    Sound.init();
+    if (!window.CATZ) return;
+    if (CATZ.lbHit(e)) { drag = { y: e.clientY, id: e.pointerId }; try { scr.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } return; }
+    CATZ.screenTap(e);
+  });
+  scr.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id || !window.CATZ) return;
+    const k = 988 / (scr.getBoundingClientRect().height || 988);        // screen px -> canvas px
+    CATZ.lbScroll((drag.y - e.clientY) * k); drag.y = e.clientY;
+  });
+  const endDrag = e => { if (drag && e.pointerId === drag.id) drag = null; };
+  scr.addEventListener('pointerup', endDrag); scr.addEventListener('pointercancel', endDrag);
+  scr.addEventListener('wheel', e => {
+    if (!window.CATZ || CATZ.G.screen !== 'attract' || !CATZ.lbHit(e)) return;
+    e.preventDefault(); CATZ.lbScroll(e.deltaY * 0.8);
+  }, { passive: false });
 
   // ---- screen: warp the 960x988 canvas onto the keystoned glass (corners measured from the cabinet image) -------
   function homography(src, dst) {
